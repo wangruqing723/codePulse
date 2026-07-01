@@ -1,0 +1,422 @@
+import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import path from "node:path";
+import {
+  matchesMonitorPrefixes,
+  parseMonitorProjectPrefixes,
+  projectNameFromCwd,
+} from "./paths";
+import { scanSessions } from "./scanners";
+import { toPositiveInt } from "./time";
+import type {
+  HookEvent,
+  Preferences,
+  SessionRecord,
+  SessionStatus,
+  StateSnapshot,
+} from "./types";
+
+const STATUS_ORDER: SessionStatus[] = [
+  "waiting",
+  "error",
+  "running",
+  "done",
+  "idle",
+];
+const HOOK_ONLY_RUNNING_GRACE_MS = 30_000;
+
+export function statePath(supportPath: string): string {
+  return path.join(supportPath, "state.json");
+}
+
+export function eventsPath(supportPath: string): string {
+  return path.join(supportPath, "events");
+}
+
+export async function loadSnapshot(
+  supportPath: string,
+): Promise<StateSnapshot | undefined> {
+  try {
+    return JSON.parse(
+      await readFile(statePath(supportPath), "utf8"),
+    ) as StateSnapshot;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function saveSnapshot(
+  supportPath: string,
+  snapshot: StateSnapshot,
+): Promise<void> {
+  await mkdir(supportPath, { recursive: true });
+  await writeFile(
+    statePath(supportPath),
+    `${JSON.stringify(snapshot, null, 2)}\n`,
+  );
+}
+
+async function loadHookEvents(
+  supportPath: string,
+  activeWindowMs: number,
+  now: number,
+): Promise<HookEvent[]> {
+  const dir = eventsPath(supportPath);
+  let files: string[];
+  try {
+    files = await readdir(dir);
+  } catch {
+    return [];
+  }
+
+  const events = await Promise.all(
+    files
+      .filter((file) => file.endsWith(".json"))
+      .map(async (file) => {
+        const filePath = path.join(dir, file);
+        const fileStat = await stat(filePath);
+        if (now - fileStat.mtimeMs > activeWindowMs) {
+          return undefined;
+        }
+
+        try {
+          return JSON.parse(await readFile(filePath, "utf8")) as HookEvent;
+        } catch {
+          return undefined;
+        }
+      }),
+  );
+
+  return events.filter((event): event is HookEvent => !!event);
+}
+
+function statusCounts(
+  sessions: SessionRecord[],
+): Record<SessionStatus, number> {
+  return {
+    running: sessions.filter((session) => session.status === "running").length,
+    waiting: sessions.filter((session) => session.status === "waiting").length,
+    done: sessions.filter((session) => session.status === "done").length,
+    idle: sessions.filter((session) => session.status === "idle").length,
+    error: sessions.filter((session) => session.status === "error").length,
+  };
+}
+
+function sortSessions(a: SessionRecord, b: SessionRecord): number {
+  const statusDiff =
+    STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status);
+  if (statusDiff !== 0) {
+    return statusDiff;
+  }
+
+  return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+}
+
+function keyFor(session: SessionRecord): string {
+  return `${session.agent}:${session.id}`;
+}
+
+function earlierIso(
+  first: string | undefined,
+  second: string | undefined,
+): string | undefined {
+  if (!first) {
+    return second;
+  }
+
+  if (!second) {
+    return first;
+  }
+
+  return new Date(first).getTime() <= new Date(second).getTime()
+    ? first
+    : second;
+}
+
+function timestampMs(value: string | undefined): number {
+  const timestamp = Date.parse(value ?? "");
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function sessionFreshnessMs(session: SessionRecord | undefined): number {
+  if (!session) {
+    return 0;
+  }
+
+  return Math.max(
+    timestampMs(session.updatedAt),
+    timestampMs(session.lastEventAt),
+    timestampMs(session.completedAt),
+  );
+}
+
+function eventName(event: HookEvent): string {
+  return (event.eventName ?? "").toLowerCase();
+}
+
+function shouldIgnoreHookEvent(
+  event: HookEvent,
+  previous: SessionRecord | undefined,
+  now: number,
+): boolean {
+  const eventTime = timestampMs(event.timestamp);
+
+  if (eventName(event) === "sessionstart") {
+    return true;
+  }
+
+  if (previous && eventTime < sessionFreshnessMs(previous)) {
+    return true;
+  }
+
+  return (
+    !previous &&
+    event.kind === "running" &&
+    !event.transcriptPath &&
+    now - eventTime > HOOK_ONLY_RUNNING_GRACE_MS
+  );
+}
+
+function freshestSession(
+  sessions: Iterable<SessionRecord>,
+  matches: (session: SessionRecord) => boolean,
+): SessionRecord | undefined {
+  let freshest: SessionRecord | undefined;
+
+  for (const session of sessions) {
+    if (!matches(session)) {
+      continue;
+    }
+
+    if (
+      !freshest ||
+      sessionFreshnessMs(session) > sessionFreshnessMs(freshest)
+    ) {
+      freshest = session;
+    }
+  }
+
+  return freshest;
+}
+
+function sessionIdForHookEvent(
+  event: HookEvent,
+  sessions: Map<string, SessionRecord>,
+): string | undefined {
+  if (event.sessionId) {
+    return `${event.agent}:${event.sessionId}`;
+  }
+
+  const matchedByTranscript = event.transcriptPath
+    ? freshestSession(
+        sessions.values(),
+        (session) =>
+          session.agent === event.agent &&
+          session.transcriptPath === event.transcriptPath,
+      )
+    : undefined;
+  if (matchedByTranscript) {
+    return matchedByTranscript.id;
+  }
+
+  const matchedByCwd = event.cwd
+    ? freshestSession(
+        sessions.values(),
+        (session) => session.agent === event.agent && session.cwd === event.cwd,
+      )
+    : undefined;
+  if (matchedByCwd) {
+    return matchedByCwd.id;
+  }
+
+  if (event.agent === "codex") {
+    return undefined;
+  }
+
+  return `${event.agent}:${event.cwd ?? event.id}`;
+}
+
+export function mergeHookEvents(
+  sessions: SessionRecord[],
+  events: HookEvent[],
+  monitorPrefixes: string[],
+  now: number,
+): SessionRecord[] {
+  const byId = new Map(sessions.map((session) => [session.id, session]));
+  const sortedEvents = [...events].sort(
+    (a, b) => timestampMs(a.timestamp) - timestampMs(b.timestamp),
+  );
+
+  for (const event of sortedEvents) {
+    if (!matchesMonitorPrefixes(event.cwd, monitorPrefixes)) {
+      continue;
+    }
+
+    const id = sessionIdForHookEvent(event, byId);
+    if (!id) {
+      continue;
+    }
+
+    const previous = byId.get(id);
+    if (shouldIgnoreHookEvent(event, previous, now)) {
+      continue;
+    }
+
+    const status = event.kind;
+    const updatedAt = event.timestamp;
+
+    byId.set(id, {
+      ...previous,
+      id,
+      agent: event.agent,
+      status,
+      source: "hook",
+      cwd: event.cwd ?? previous?.cwd,
+      projectName: projectNameFromCwd(
+        event.cwd ?? previous?.cwd,
+        previous?.projectName ?? event.agent,
+      ),
+      transcriptPath: event.transcriptPath ?? previous?.transcriptPath,
+      title: projectNameFromCwd(
+        event.cwd ?? previous?.cwd,
+        previous?.title ?? event.agent,
+      ),
+      lastEventAt: event.timestamp,
+      updatedAt,
+      runningSince:
+        status === "running" && previous?.status === "running"
+          ? (previous.runningSince ?? event.timestamp)
+          : status === "running"
+            ? event.timestamp
+            : previous?.runningSince,
+      completedAt: status === "done" ? event.timestamp : previous?.completedAt,
+      errorMessage: status === "error" ? event.message : previous?.errorMessage,
+    });
+  }
+
+  return [...byId.values()].filter(
+    (session) => now - new Date(session.updatedAt).getTime() <= 60 * 60 * 1000,
+  );
+}
+
+function isImmediateStatus(status: SessionStatus): boolean {
+  return status === "running" || status === "waiting" || status === "error";
+}
+
+function hasFresherSessionEvent(
+  candidate: SessionRecord,
+  previous: SessionRecord,
+): boolean {
+  return sessionFreshnessMs(candidate) > sessionFreshnessMs(previous);
+}
+
+export function applyDebounce(
+  previous: StateSnapshot | undefined,
+  candidates: SessionRecord[],
+): SessionRecord[] {
+  const previousByKey = new Map(
+    (previous?.sessions ?? []).map((session) => [keyFor(session), session]),
+  );
+
+  return candidates.map((candidate) => {
+    const previousSession = previousByKey.get(keyFor(candidate));
+    if (!previousSession || candidate.source === "hook") {
+      return candidate;
+    }
+
+    if (previousSession.status === candidate.status) {
+      return {
+        ...candidate,
+        runningSince:
+          candidate.status === "running"
+            ? earlierIso(previousSession.runningSince, candidate.runningSince)
+            : (candidate.runningSince ?? previousSession.runningSince),
+        pendingStatus: undefined,
+        pendingCount: 0,
+      };
+    }
+
+    if (
+      isImmediateStatus(candidate.status) ||
+      (candidate.status === "done" &&
+        hasFresherSessionEvent(candidate, previousSession))
+    ) {
+      return {
+        ...candidate,
+        runningSince:
+          candidate.status === "running"
+            ? (candidate.runningSince ??
+              candidate.lastEventAt ??
+              previousSession.runningSince)
+            : (candidate.runningSince ?? previousSession.runningSince),
+        pendingStatus: undefined,
+        pendingCount: 0,
+      };
+    }
+
+    if (previousSession.pendingStatus === candidate.status) {
+      const pendingCount = (previousSession.pendingCount ?? 1) + 1;
+      if (pendingCount >= 2) {
+        return {
+          ...candidate,
+          runningSince: candidate.runningSince ?? previousSession.runningSince,
+          pendingStatus: undefined,
+          pendingCount: 0,
+        };
+      }
+
+      return {
+        ...candidate,
+        runningSince: candidate.runningSince ?? previousSession.runningSince,
+        status: previousSession.status,
+        pendingStatus: candidate.status,
+        pendingCount,
+      };
+    }
+
+    return {
+      ...candidate,
+      runningSince: candidate.runningSince ?? previousSession.runningSince,
+      status: previousSession.status,
+      pendingStatus: candidate.status,
+      pendingCount: 1,
+    };
+  });
+}
+
+export async function buildState(
+  supportPath: string,
+  preferences: Preferences,
+): Promise<{
+  previous?: StateSnapshot;
+  snapshot: StateSnapshot;
+}> {
+  const previous = await loadSnapshot(supportPath);
+  const now = Date.now();
+  const activeWindowMs =
+    toPositiveInt(preferences.activeWindowMinutes, 5) * 60 * 1000;
+  const monitorPrefixes = parseMonitorProjectPrefixes(
+    preferences.monitorProjects,
+  );
+  const passiveSessions = await scanSessions({
+    activeWindowMs,
+    monitorPrefixes,
+    now,
+  });
+  const hookEvents = await loadHookEvents(supportPath, activeWindowMs, now);
+  const merged = mergeHookEvents(
+    passiveSessions,
+    hookEvents,
+    monitorPrefixes,
+    now,
+  );
+  const sessions = applyDebounce(previous, merged).sort(sortSessions);
+  const snapshot = {
+    generatedAt: new Date(now).toISOString(),
+    sessions,
+    counts: statusCounts(sessions),
+  };
+
+  await saveSnapshot(supportPath, snapshot);
+
+  return { previous, snapshot };
+}

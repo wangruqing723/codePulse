@@ -1,0 +1,93 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "codepulse",
+  "title": "CodePulse",
+  "description": "Monitor Claude Code and Codex CLI task states from the macOS menu bar.",
+  "icon": "codepulse-icon-v2.png",
+  "author": "ruqing_wang",
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "codepulse",
+      "title": "CodePulse",
+      "description": "Show active Claude Code and Codex CLI sessions in the menu bar.",
+      "icon": "codepulse-icon-v2.png",
+      "mode": "menu-bar",
+      "interval": "5s"
+    },
+    {
+      "name": "setup-hooks",
+      "title": "Setup CodePulse Hooks",
+      "description": "Install or remove Claude Code hooks and Codex notify integration.",
+      "icon": "setup-hooks-icon-v2.png",
+      "mode": "no-view"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "activeWindowMinutes",
+      "type": "textfield",
+      "title": "活跃窗口分钟数",
+      "description": "只展示最近写入过的会话。",
+      "default": "5",
+      "required": false
+    },
+    {
+      "name": "menuBarStyle",
+      "type": "dropdown",
+      "title": "菜单栏样式",
+      "description": "控制菜单栏标题展示的信息密度。",
+      "default": "count",
+      "required": false,
+      "data": [
+        {
+          "title": "只图标",
+          "value": "icon"
+        },
+        {
+          "title": "图标 + 数字",
+          "value": "count"
+        },
+        {
+          "title": "图标 + 会话名",
+          "value": "session"
+        }
+      ]
+    },
+    {
+      "name": "enableSound",
+      "type": "checkbox",
+      "title": "启用声音",
+      "label": "状态通知使用系统声音",
+      "description": "当前使用 Raycast 通知能力，声音由系统通知设置控制。",
+      "default": false,
+      "required": false
+    },
+    {
+      "name": "monitorProjects",
+      "type": "textfield",
+      "title": "监控项目路径",
+      "description": "可选。用逗号分隔路径前缀；留空表示监控全部近期会话。",
+      "required": false
+    }
+  ],
+  "scripts": {
+    "dev": "ray develop",
+    "build": "ray build -e dist",
+    "lint": "ray lint",
+    "fix-lint": "ray lint --fix",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@raycast/api": "^1.102.0"
+  },
+  "devDependencies": {
+    "@raycast/eslint-config": "^2.0.4",
+    "@types/node": "22.19.17",
+    "@types/react": "19.0.10",
+    "eslint": "^8.57.1",
+    "prettier": "^3.3.3",
+    "typescript": "^5.5.4",
+    "vitest": "^2.1.9"
+  }
+}
