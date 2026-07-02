@@ -9,10 +9,14 @@ const TOML_NOTIFY_PATTERN = /^\s*notify\s*=/;
 
 export interface HookInstallStatus {
   installed: boolean;
+  claudeInstalled: boolean;
+  codexInstalled: boolean;
   hookPath: string;
   claudeSettingsPath: string;
   codexConfigPath: string;
 }
+
+export type HookTarget = "claude" | "codex" | "all";
 
 function hookPath(supportPath: string): string {
   return path.join(supportPath, "bin", MARKER);
@@ -356,17 +360,21 @@ export async function getHookInstallStatus(
     "settings.json",
   );
   const codexConfigPath = path.join(os.homedir(), ".codex", "config.toml");
-  const installed =
-    (await exists(scriptPath)) &&
-    ((await readFile(claudeSettingsPath, "utf8").catch(() => "")).includes(
+  const scriptExists = await exists(scriptPath);
+  const claudeInstalled =
+    scriptExists &&
+    (await readFile(claudeSettingsPath, "utf8").catch(() => "")).includes(
       MARKER,
-    ) ||
-      (await readFile(codexConfigPath, "utf8").catch(() => "")).includes(
-        MARKER,
-      ));
+    );
+  const codexInstalled =
+    scriptExists &&
+    (await readFile(codexConfigPath, "utf8").catch(() => "")).includes(MARKER);
+  const installed = claudeInstalled || codexInstalled;
 
   return {
     installed,
+    claudeInstalled,
+    codexInstalled,
     hookPath: scriptPath,
     claudeSettingsPath,
     codexConfigPath,
@@ -375,6 +383,7 @@ export async function getHookInstallStatus(
 
 export async function installHooks(
   supportPath: string,
+  target: HookTarget = "all",
 ): Promise<HookInstallStatus> {
   const scriptPath = await writeHookScript(supportPath);
   const claudeSettingsPath = path.join(
@@ -384,14 +393,20 @@ export async function installHooks(
   );
   const codexConfigPath = path.join(os.homedir(), ".codex", "config.toml");
 
-  await installClaudeHooks(claudeSettingsPath, scriptPath);
-  await installCodexNotify(codexConfigPath, scriptPath);
+  if (target === "claude" || target === "all") {
+    await installClaudeHooks(claudeSettingsPath, scriptPath);
+  }
+
+  if (target === "codex" || target === "all") {
+    await installCodexNotify(codexConfigPath, scriptPath);
+  }
 
   return getHookInstallStatus(supportPath);
 }
 
 export async function uninstallHooks(
   supportPath: string,
+  target: HookTarget = "all",
 ): Promise<HookInstallStatus> {
   const claudeSettingsPath = path.join(
     os.homedir(),
@@ -400,7 +415,10 @@ export async function uninstallHooks(
   );
   const codexConfigPath = path.join(os.homedir(), ".codex", "config.toml");
 
-  if (await exists(claudeSettingsPath)) {
+  if (
+    (target === "claude" || target === "all") &&
+    (await exists(claudeSettingsPath))
+  ) {
     const settings = await readJsonFile(claudeSettingsPath);
     await writeFile(
       claudeSettingsPath,
@@ -408,7 +426,10 @@ export async function uninstallHooks(
     );
   }
 
-  if (await exists(codexConfigPath)) {
+  if (
+    (target === "codex" || target === "all") &&
+    (await exists(codexConfigPath))
+  ) {
     const codexConfig = await readFile(codexConfigPath, "utf8");
     await writeFile(codexConfigPath, removeCodePulseCodexNotify(codexConfig));
   }

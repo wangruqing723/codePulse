@@ -20,7 +20,7 @@
       "title": "Setup CodePulse Hooks",
       "description": "Install or remove Claude Code hooks and Codex notify integration.",
       "icon": "setup-hooks-icon-v2.png",
-      "mode": "no-view"
+      "mode": "view"
     }
   ],
   "preferences": [
