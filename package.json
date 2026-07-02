@@ -5,6 +5,8 @@
   "description": "Monitor Claude Code and Codex CLI task states from the macOS menu bar.",
   "icon": "codepulse-icon-v2.png",
   "author": "ruqing_wang",
+  "owner": "code-pulse",
+  "access": "private",
   "license": "MIT",
   "commands": [
     {
