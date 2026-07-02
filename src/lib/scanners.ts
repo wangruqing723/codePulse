@@ -35,11 +35,96 @@ function stringValue(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+function parseJsonObject(value: unknown): JsonObject | undefined {
+  if (typeof value !== "string") {
+    return asObject(value);
+  }
+
+  try {
+    return asObject(JSON.parse(value));
+  } catch {
+    return undefined;
+  }
+}
+
 function eventTimestamp(
   event: JsonObject | undefined,
   fallback: string,
 ): string {
   return stringValue(event?.timestamp) ?? fallback;
+}
+
+function messageText(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(messageText).filter(Boolean).join("\n");
+  }
+
+  const object = asObject(value);
+  if (!object) {
+    return "";
+  }
+
+  return [object.text, object.content, object.message]
+    .map(messageText)
+    .filter(Boolean)
+    .join("\n");
+}
+
+function isClaudeInterruptedByUser(event: JsonObject | undefined): boolean {
+  if (event?.type !== "user") {
+    return false;
+  }
+
+  return messageText(event.message)
+    .toLowerCase()
+    .includes("[request interrupted by user]");
+}
+
+function isClaudeToolResultEvent(event: JsonObject): boolean {
+  if (
+    event.toolUseResult ||
+    typeof event.sourceToolAssistantUUID === "string"
+  ) {
+    return true;
+  }
+
+  const message = asObject(event.message);
+  const content = message?.content;
+  return (
+    Array.isArray(content) &&
+    content.some((item) => asObject(item)?.type === "tool_result")
+  );
+}
+
+function isClaudeShellMirrorEvent(event: JsonObject): boolean {
+  const text = messageText(event.message).trim().toLowerCase();
+  return (
+    text.startsWith("<bash-input>") ||
+    text.startsWith("<bash-stdout>") ||
+    text.startsWith("<bash-stderr>")
+  );
+}
+
+function isClaudeTurnStartEvent(event: JsonObject): boolean {
+  if (
+    event.type !== "user" ||
+    isClaudeInterruptedByUser(event) ||
+    isClaudeToolResultEvent(event) ||
+    isClaudeShellMirrorEvent(event)
+  ) {
+    return false;
+  }
+
+  const origin = asObject(event.origin);
+  if (origin?.kind === "human" || typeof event.promptSource === "string") {
+    return true;
+  }
+
+  return messageText(event.message).trim().length > 0 || !event.message;
 }
 
 function decodeClaudeProjectDir(filePath: string): string | undefined {
@@ -49,6 +134,12 @@ function decodeClaudeProjectDir(filePath: string): string | undefined {
   }
 
   return `/${encoded.slice(1).split("-").filter(Boolean).join("/")}`;
+}
+
+export function filterClaudeTranscriptFiles(files: string[]): string[] {
+  return files.filter(
+    (file) => !path.normalize(file).split(path.sep).includes("subagents"),
+  );
 }
 
 export function inferClaudeStatus(
@@ -67,6 +158,10 @@ export function inferClaudeStatus(
   const type = stringValue(event?.type);
   const message = asObject(event?.message);
   const stopReason = stringValue(message?.stop_reason);
+
+  if (isClaudeInterruptedByUser(event)) {
+    return "done";
+  }
 
   if (
     type === "assistant" &&
@@ -102,6 +197,14 @@ export function inferCodexStatus(
 
   if (type === "task_complete" || payloadType === "task_complete") {
     return "done";
+  }
+
+  if (payloadType === "turn_aborted") {
+    return "done";
+  }
+
+  if (isCodexWaitingForUser(event)) {
+    return "waiting";
   }
 
   if (ageMs <= RUNNING_MTIME_WINDOW_MS) {
@@ -153,7 +256,7 @@ function lastClaudeConversationEvent(
 function lastClaudeTurnStartEvent(
   events: JsonObject[],
 ): JsonObject | undefined {
-  return [...events].reverse().find((event) => event.type === "user");
+  return [...events].reverse().find(isClaudeTurnStartEvent);
 }
 
 function lastCodexMeaningfulEvent(
@@ -165,6 +268,83 @@ function lastCodexMeaningfulEvent(
 function codexPayloadType(event: JsonObject | undefined): string | undefined {
   const payload = asObject(event?.payload);
   return stringValue(payload?.type);
+}
+
+function isCodexWaitingForUser(event: JsonObject | undefined): boolean {
+  const payload = asObject(event?.payload);
+  if (stringValue(payload?.type) !== "function_call") {
+    return false;
+  }
+
+  const name = stringValue(payload?.name);
+  if (name === "request_user_input") {
+    return true;
+  }
+
+  const argumentsObject = parseJsonObject(payload?.arguments);
+  return (
+    name === "exec_command" &&
+    argumentsObject?.sandbox_permissions === "require_escalated"
+  );
+}
+
+function codexCallId(event: JsonObject | undefined): string | undefined {
+  const payload = asObject(event?.payload);
+  const item = asObject(payload?.item);
+  return (
+    stringValue(payload?.call_id) ??
+    stringValue(payload?.callId) ??
+    stringValue(item?.call_id) ??
+    stringValue(item?.callId)
+  );
+}
+
+function isCodexFunctionOutputEvent(event: JsonObject | undefined): boolean {
+  const payloadType = codexPayloadType(event);
+  return (
+    payloadType === "function_call_output" ||
+    payloadType === "custom_tool_call_output"
+  );
+}
+
+function isCodexTerminalEvent(event: JsonObject | undefined): boolean {
+  const payloadType = codexPayloadType(event);
+  return payloadType === "task_complete" || payloadType === "turn_aborted";
+}
+
+function isCodexTurnBoundaryEvent(event: JsonObject | undefined): boolean {
+  const payloadType = codexPayloadType(event);
+  return (
+    event?.type === "user_message" ||
+    payloadType === "task_started" ||
+    payloadType === "user_message"
+  );
+}
+
+function hasPendingCodexWaitingCall(events: JsonObject[]): boolean {
+  const completedCallIds = new Set<string>();
+
+  for (const event of [...events].reverse()) {
+    if (isCodexTerminalEvent(event)) {
+      return false;
+    }
+
+    const callId = codexCallId(event);
+    if (isCodexFunctionOutputEvent(event) && callId) {
+      completedCallIds.add(callId);
+      continue;
+    }
+
+    if (isCodexWaitingForUser(event)) {
+      return !callId || !completedCallIds.has(callId);
+    }
+
+    if (isCodexTurnBoundaryEvent(event)) {
+      return false;
+    }
+  }
+
+  return false;
 }
 
 function lastCodexTurnStartEvent(events: JsonObject[]): JsonObject | undefined {
@@ -188,6 +368,22 @@ export function inferCodexTurnStartAt(
   events: JsonObject[],
 ): string | undefined {
   return stringValue(lastCodexTurnStartEvent(events)?.timestamp);
+}
+
+export function inferCodexStatusFromEvents(
+  events: JsonObject[],
+  ageMs: number,
+  hasError: boolean,
+): SessionStatus {
+  if (hasError) {
+    return "error";
+  }
+
+  if (hasPendingCodexWaitingCall(events)) {
+    return "waiting";
+  }
+
+  return inferCodexStatus(lastCodexMeaningfulEvent(events), ageMs, false);
 }
 
 function idFromFile(
@@ -325,8 +521,8 @@ async function scanCodexFile(
     isoFromMtime(fileStat.mtimeMs),
   );
   const turnStartedAt = inferCodexTurnStartAt(parsedEvents);
-  const status = inferCodexStatus(
-    meaningfulEvent,
+  const status = inferCodexStatusFromEvents(
+    parsedEvents,
     ageMs,
     hasCodexError(parsedEvents),
   );
@@ -343,7 +539,9 @@ async function scanCodexFile(
     lastEventAt,
     updatedAt: isoFromMtime(fileStat.mtimeMs),
     runningSince:
-      status === "running" || status === "done" ? turnStartedAt : undefined,
+      status === "running" || status === "waiting" || status === "done"
+        ? turnStartedAt
+        : undefined,
     completedAt: status === "done" ? lastEventAt : undefined,
   };
 }
@@ -352,7 +550,7 @@ export async function scanClaudeSessions(
   options: ScanOptions,
 ): Promise<SessionRecord[]> {
   const root = expandHome("~/.claude/projects");
-  const files = await walkJsonlFiles(root, 4);
+  const files = filterClaudeTranscriptFiles(await walkJsonlFiles(root, 4));
   const sessions = await Promise.all(
     files.map((file) => scanClaudeFile(file, options).catch(() => undefined)),
   );

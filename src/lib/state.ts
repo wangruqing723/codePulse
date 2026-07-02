@@ -235,6 +235,22 @@ function sessionIdForHookEvent(
   return `${event.agent}:${event.cwd ?? event.id}`;
 }
 
+function runningSinceForHookEvent(
+  status: HookEvent["kind"],
+  previous: SessionRecord | undefined,
+  timestamp: string,
+): string | undefined {
+  if (status !== "running") {
+    return previous?.runningSince;
+  }
+
+  if (previous?.status === "running" || previous?.status === "waiting") {
+    return previous.runningSince ?? timestamp;
+  }
+
+  return timestamp;
+}
+
 export function mergeHookEvents(
   sessions: SessionRecord[],
   events: HookEvent[],
@@ -282,12 +298,7 @@ export function mergeHookEvents(
       ),
       lastEventAt: event.timestamp,
       updatedAt,
-      runningSince:
-        status === "running" && previous?.status === "running"
-          ? (previous.runningSince ?? event.timestamp)
-          : status === "running"
-            ? event.timestamp
-            : previous?.runningSince,
+      runningSince: runningSinceForHookEvent(status, previous, event.timestamp),
       completedAt: status === "done" ? event.timestamp : previous?.completedAt,
       errorMessage: status === "error" ? event.message : previous?.errorMessage,
     });
@@ -307,6 +318,25 @@ function hasFresherSessionEvent(
   previous: SessionRecord,
 ): boolean {
   return sessionFreshnessMs(candidate) > sessionFreshnessMs(previous);
+}
+
+function runningSinceForImmediateStatus(
+  candidate: SessionRecord,
+  previous: SessionRecord,
+): string | undefined {
+  if (candidate.status !== "running") {
+    return candidate.runningSince ?? previous.runningSince;
+  }
+
+  if (previous.status === "running" || previous.status === "waiting") {
+    return (
+      previous.runningSince ?? candidate.runningSince ?? candidate.lastEventAt
+    );
+  }
+
+  return (
+    candidate.runningSince ?? candidate.lastEventAt ?? previous.runningSince
+  );
 }
 
 export function applyDebounce(
@@ -342,12 +372,10 @@ export function applyDebounce(
     ) {
       return {
         ...candidate,
-        runningSince:
-          candidate.status === "running"
-            ? (candidate.runningSince ??
-              candidate.lastEventAt ??
-              previousSession.runningSince)
-            : (candidate.runningSince ?? previousSession.runningSince),
+        runningSince: runningSinceForImmediateStatus(
+          candidate,
+          previousSession,
+        ),
         pendingStatus: undefined,
         pendingCount: 0,
       };

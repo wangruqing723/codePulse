@@ -155,6 +155,43 @@ describe("hook event merging", () => {
 
     expect(sessions).toEqual([passiveRunning]);
   });
+
+  it("preserves running start time when Claude resumes after waiting", () => {
+    const sessions = mergeHookEvents(
+      [],
+      [
+        hook({
+          id: "prompt",
+          eventName: "UserPromptSubmit",
+          sessionId: "claude-session",
+          timestamp: "2026-07-01T00:00:00.000Z",
+        }),
+        hook({
+          id: "permission",
+          kind: "waiting",
+          eventName: "Notification",
+          sessionId: "claude-session",
+          timestamp: "2026-07-01T00:00:10.000Z",
+        }),
+        hook({
+          id: "resume",
+          eventName: "UserPromptSubmit",
+          sessionId: "claude-session",
+          timestamp: "2026-07-01T00:00:20.000Z",
+        }),
+      ],
+      [],
+      Date.parse("2026-07-01T00:00:21.000Z"),
+    );
+
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({
+      id: "claude:claude-session",
+      status: "running",
+      runningSince: "2026-07-01T00:00:00.000Z",
+      lastEventAt: "2026-07-01T00:00:20.000Z",
+    });
+  });
 });
 
 describe("state debounce", () => {
@@ -224,6 +261,45 @@ describe("state debounce", () => {
     expect(applyDebounce(previous, [done])).toEqual([
       {
         ...done,
+        pendingStatus: undefined,
+        pendingCount: 0,
+      },
+    ]);
+  });
+
+  it("preserves previous runtime when passive state resumes from waiting", () => {
+    const previous: StateSnapshot = {
+      generatedAt: "2026-07-01T00:00:10.000Z",
+      counts: {
+        running: 0,
+        waiting: 1,
+        done: 0,
+        idle: 0,
+        error: 0,
+      },
+      sessions: [
+        session({
+          id: "claude:shared",
+          agent: "claude",
+          status: "waiting",
+          updatedAt: "2026-07-01T00:00:10.000Z",
+          lastEventAt: "2026-07-01T00:00:10.000Z",
+          runningSince: "2026-07-01T00:00:00.000Z",
+        }),
+      ],
+    };
+    const running = session({
+      id: "claude:shared",
+      agent: "claude",
+      status: "running",
+      updatedAt: "2026-07-01T00:00:40.000Z",
+      lastEventAt: "2026-07-01T00:00:40.000Z",
+    });
+
+    expect(applyDebounce(previous, [running])).toEqual([
+      {
+        ...running,
+        runningSince: "2026-07-01T00:00:00.000Z",
         pendingStatus: undefined,
         pendingCount: 0,
       },

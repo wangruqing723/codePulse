@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import { parseMonitorProjectPrefixes, matchesMonitorPrefixes } from "./paths";
 import {
   dedupeSessionsById,
+  filterClaudeTranscriptFiles,
   inferClaudeStatus,
   inferClaudeTurnStartAt,
   inferCodexStatus,
+  inferCodexStatusFromEvents,
   inferCodexTurnStartAt,
 } from "./scanners";
 import { formatElapsed, toPositiveInt } from "./time";
@@ -37,6 +39,16 @@ describe("time formatting", () => {
 });
 
 describe("Claude status inference", () => {
+  it("ignores Claude subagent transcripts", () => {
+    expect(
+      filterClaudeTranscriptFiles([
+        "/Users/me/.claude/projects/-tmp-project/session.jsonl",
+        "/Users/me/.claude/projects/-tmp-project/session/subagents/agent-1.jsonl",
+        "/Users/me/.claude/projects/-tmp-project/session/subagents/agent-2.jsonl",
+      ]),
+    ).toEqual(["/Users/me/.claude/projects/-tmp-project/session.jsonl"]);
+  });
+
   it("treats fresh tool_use assistant messages as running", () => {
     expect(
       inferClaudeStatus(
@@ -51,6 +63,22 @@ describe("Claude status inference", () => {
     expect(
       inferClaudeStatus(
         { type: "assistant", message: { stop_reason: "end_turn" } },
+        10_000,
+        false,
+      ),
+    ).toBe("done");
+  });
+
+  it("treats Claude user interruption markers as done", () => {
+    expect(
+      inferClaudeStatus(
+        {
+          type: "user",
+          message: {
+            role: "user",
+            content: [{ type: "text", text: "[Request interrupted by user]" }],
+          },
+        },
         10_000,
         false,
       ),
@@ -73,12 +101,205 @@ describe("Claude status inference", () => {
       ]),
     ).toBe("2026-07-01T00:01:00.000Z");
   });
+
+  it("does not use Claude interruption markers as turn starts", () => {
+    expect(
+      inferClaudeTurnStartAt([
+        { type: "user", timestamp: "2026-07-01T00:00:00.000Z" },
+        {
+          type: "user",
+          timestamp: "2026-07-01T00:00:30.000Z",
+          message: {
+            role: "user",
+            content: [{ type: "text", text: "[Request interrupted by user]" }],
+          },
+        },
+      ]),
+    ).toBe("2026-07-01T00:00:00.000Z");
+  });
+
+  it("does not use Claude tool results as turn starts", () => {
+    expect(
+      inferClaudeTurnStartAt([
+        {
+          type: "user",
+          timestamp: "2026-07-01T00:00:00.000Z",
+          origin: { kind: "human" },
+          promptSource: "typed",
+          message: { role: "user", content: "run the task" },
+        },
+        {
+          type: "assistant",
+          timestamp: "2026-07-01T00:00:05.000Z",
+          message: { stop_reason: "tool_use" },
+        },
+        {
+          type: "user",
+          timestamp: "2026-07-01T00:00:40.000Z",
+          sourceToolAssistantUUID: "assistant-uuid",
+          toolUseResult: { stdout: "approved and completed" },
+          message: {
+            role: "user",
+            content: [
+              {
+                tool_use_id: "toolu_123",
+                type: "tool_result",
+                content: "approved and completed",
+              },
+            ],
+          },
+        },
+      ]),
+    ).toBe("2026-07-01T00:00:00.000Z");
+  });
 });
 
 describe("Codex status inference", () => {
   it("treats task_complete events as done", () => {
     expect(
       inferCodexStatus({ payload: { type: "task_complete" } }, 10_000, false),
+    ).toBe("done");
+  });
+
+  it("treats escalated Codex command calls as waiting", () => {
+    expect(
+      inferCodexStatus(
+        {
+          type: "response_item",
+          payload: {
+            type: "function_call",
+            name: "exec_command",
+            arguments: JSON.stringify({
+              sandbox_permissions: "require_escalated",
+            }),
+          },
+        },
+        120_000,
+        false,
+      ),
+    ).toBe("waiting");
+  });
+
+  it("keeps Codex approval calls waiting when token_count follows", () => {
+    expect(
+      inferCodexStatusFromEvents(
+        [
+          {
+            type: "response_item",
+            payload: {
+              type: "function_call",
+              name: "exec_command",
+              call_id: "call_approval",
+              arguments: JSON.stringify({
+                sandbox_permissions: "require_escalated",
+              }),
+            },
+          },
+          {
+            type: "event_msg",
+            payload: {
+              type: "token_count",
+            },
+          },
+        ],
+        120_000,
+        false,
+      ),
+    ).toBe("waiting");
+  });
+
+  it("clears Codex approval waiting after the matching output arrives", () => {
+    expect(
+      inferCodexStatusFromEvents(
+        [
+          {
+            type: "response_item",
+            payload: {
+              type: "function_call",
+              name: "exec_command",
+              call_id: "call_approval",
+              arguments: JSON.stringify({
+                sandbox_permissions: "require_escalated",
+              }),
+            },
+          },
+          {
+            type: "event_msg",
+            payload: {
+              type: "token_count",
+            },
+          },
+          {
+            type: "response_item",
+            payload: {
+              type: "function_call_output",
+              call_id: "call_approval",
+            },
+          },
+        ],
+        120_000,
+        false,
+      ),
+    ).toBe("done");
+  });
+
+  it("clears Codex approval waiting after the turn completes", () => {
+    expect(
+      inferCodexStatusFromEvents(
+        [
+          {
+            type: "response_item",
+            payload: {
+              type: "function_call",
+              name: "exec_command",
+              call_id: "call_approval",
+              arguments: JSON.stringify({
+                sandbox_permissions: "require_escalated",
+              }),
+            },
+          },
+          {
+            type: "event_msg",
+            payload: {
+              type: "token_count",
+            },
+          },
+          {
+            type: "event_msg",
+            payload: {
+              type: "task_complete",
+            },
+          },
+        ],
+        120_000,
+        false,
+      ),
+    ).toBe("done");
+  });
+
+  it("treats Codex user input requests as waiting", () => {
+    expect(
+      inferCodexStatus(
+        {
+          type: "response_item",
+          payload: {
+            type: "function_call",
+            name: "request_user_input",
+          },
+        },
+        120_000,
+        false,
+      ),
+    ).toBe("waiting");
+  });
+
+  it("treats aborted Codex turns as done", () => {
+    expect(
+      inferCodexStatus(
+        { type: "event_msg", payload: { type: "turn_aborted" } },
+        10_000,
+        false,
+      ),
     ).toBe("done");
   });
 
