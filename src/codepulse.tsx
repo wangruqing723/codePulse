@@ -343,7 +343,7 @@ export default function Command() {
             title="打开 Setup 面板"
             onAction={async () => {
               await open(
-                "raycast://extensions/ruqing_wang/codepulse/setup-hooks",
+                "raycast://extensions/ruqing_wang/code-pulse/setup-hooks",
               );
             }}
           />

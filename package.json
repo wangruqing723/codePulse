@@ -1,6 +1,6 @@
 {
   "$schema": "https://www.raycast.com/schemas/extension.json",
-  "name": "codepulse",
+  "name": "code-pulse",
   "title": "CodePulse",
   "description": "Monitor Claude Code and Codex CLI task states from the macOS menu bar.",
   "icon": "codepulse-icon-v2.png",
