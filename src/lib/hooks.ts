@@ -18,12 +18,25 @@ export interface HookInstallStatus {
 
 export type HookTarget = "claude" | "codex" | "all";
 
+export interface HookInstallOptions {
+  supportPath: string;
+  eventRoot?: string;
+  claudeSettingsPath?: string;
+  codexConfigPath?: string;
+}
+
 function hookPath(supportPath: string): string {
   return path.join(supportPath, "bin", MARKER);
 }
 
 function backupPath(filePath: string): string {
   return `${filePath}.codepulse.bak`;
+}
+
+export function normalizeHookOptions(
+  input: string | HookInstallOptions,
+): HookInstallOptions {
+  return typeof input === "string" ? { supportPath: input } : input;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -54,13 +67,17 @@ async function backupIfExists(filePath: string): Promise<void> {
   await copyFile(filePath, target);
 }
 
-function hookScriptContent(supportPath: string): string {
+function hookScriptContent({
+  supportPath,
+  eventRoot,
+}: HookInstallOptions): string {
+  const eventsDir = eventRoot ?? path.join(supportPath, "events");
   return `#!/usr/bin/env node
 const fs = require("fs");
 const path = require("path");
 
 const supportPath = ${JSON.stringify(supportPath)};
-const eventsDir = path.join(supportPath, "events");
+const eventsDir = ${JSON.stringify(eventsDir)};
 const args = process.argv.slice(2);
 
 function readStdin() {
@@ -132,10 +149,13 @@ process.exit(0);
 `;
 }
 
-async function writeHookScript(supportPath: string): Promise<string> {
-  const scriptPath = hookPath(supportPath);
+export async function writeHookScript(
+  input: string | HookInstallOptions,
+): Promise<string> {
+  const options = normalizeHookOptions(input);
+  const scriptPath = hookPath(options.supportPath);
   await mkdir(path.dirname(scriptPath), { recursive: true });
-  await writeFile(scriptPath, hookScriptContent(supportPath));
+  await writeFile(scriptPath, hookScriptContent(options));
   await chmod(scriptPath, 0o755);
   return scriptPath;
 }
@@ -351,15 +371,15 @@ export function removeCodePulseCodexNotify(content: string): string {
 }
 
 export async function getHookInstallStatus(
-  supportPath: string,
+  input: string | HookInstallOptions,
 ): Promise<HookInstallStatus> {
-  const scriptPath = hookPath(supportPath);
-  const claudeSettingsPath = path.join(
-    os.homedir(),
-    ".claude",
-    "settings.json",
-  );
-  const codexConfigPath = path.join(os.homedir(), ".codex", "config.toml");
+  const options = normalizeHookOptions(input);
+  const scriptPath = hookPath(options.supportPath);
+  const claudeSettingsPath =
+    options.claudeSettingsPath ??
+    path.join(os.homedir(), ".claude", "settings.json");
+  const codexConfigPath =
+    options.codexConfigPath ?? path.join(os.homedir(), ".codex", "config.toml");
   const scriptExists = await exists(scriptPath);
   const claudeInstalled =
     scriptExists &&
@@ -382,16 +402,16 @@ export async function getHookInstallStatus(
 }
 
 export async function installHooks(
-  supportPath: string,
+  input: string | HookInstallOptions,
   target: HookTarget = "all",
 ): Promise<HookInstallStatus> {
-  const scriptPath = await writeHookScript(supportPath);
-  const claudeSettingsPath = path.join(
-    os.homedir(),
-    ".claude",
-    "settings.json",
-  );
-  const codexConfigPath = path.join(os.homedir(), ".codex", "config.toml");
+  const options = normalizeHookOptions(input);
+  const scriptPath = await writeHookScript(options);
+  const claudeSettingsPath =
+    options.claudeSettingsPath ??
+    path.join(os.homedir(), ".claude", "settings.json");
+  const codexConfigPath =
+    options.codexConfigPath ?? path.join(os.homedir(), ".codex", "config.toml");
 
   if (target === "claude" || target === "all") {
     await installClaudeHooks(claudeSettingsPath, scriptPath);
@@ -401,19 +421,19 @@ export async function installHooks(
     await installCodexNotify(codexConfigPath, scriptPath);
   }
 
-  return getHookInstallStatus(supportPath);
+  return getHookInstallStatus(options);
 }
 
 export async function uninstallHooks(
-  supportPath: string,
+  input: string | HookInstallOptions,
   target: HookTarget = "all",
 ): Promise<HookInstallStatus> {
-  const claudeSettingsPath = path.join(
-    os.homedir(),
-    ".claude",
-    "settings.json",
-  );
-  const codexConfigPath = path.join(os.homedir(), ".codex", "config.toml");
+  const options = normalizeHookOptions(input);
+  const claudeSettingsPath =
+    options.claudeSettingsPath ??
+    path.join(os.homedir(), ".claude", "settings.json");
+  const codexConfigPath =
+    options.codexConfigPath ?? path.join(os.homedir(), ".codex", "config.toml");
 
   if (
     (target === "claude" || target === "all") &&
@@ -434,5 +454,5 @@ export async function uninstallHooks(
     await writeFile(codexConfigPath, removeCodePulseCodexNotify(codexConfig));
   }
 
-  return getHookInstallStatus(supportPath);
+  return getHookInstallStatus(options);
 }

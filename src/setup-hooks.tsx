@@ -40,6 +40,8 @@ const TARGETS: Array<{
   },
 ];
 
+const IS_MACOS = process.platform === "darwin";
+
 function targetInstalled(
   status: HookInstallStatus | undefined,
   target: SetupTarget,
@@ -141,6 +143,22 @@ export default function Command() {
 
   return (
     <List isLoading={isLoading} navigationTitle="Setup CodePulse Hooks">
+      <List.Item
+        icon={Icon.Info}
+        title="Floating companion"
+        subtitle={
+          IS_MACOS
+            ? "Raycast menu-bar 和悬浮窗并行"
+            : "独立运行；Raycast 不启动或停止 companion"
+        }
+        accessories={[
+          {
+            text: IS_MACOS
+              ? "Raycast hooks: supportPath/events"
+              : "WSL events: ~/.codepulse/events",
+          },
+        ]}
+      />
       {TARGETS.map((target) => {
         const installed = targetInstalled(status, target.id);
 
