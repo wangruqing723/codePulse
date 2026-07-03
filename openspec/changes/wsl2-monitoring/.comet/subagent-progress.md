@@ -8,26 +8,26 @@
 
 ## Current Task
 
-- plan_task: Task 4: Electron Floating Window
-- openspec_task: supports later 3.1/3.2/3.3/3.4/3.5/3.6/3.7 completion
-- stage: done
-- implementation_base: de75ece
-- brief: .superpowers/sdd/task-4-brief.md
-- report: .superpowers/sdd/task-4-report.md
-- review_round: 1
-- status: Task 4 accepted after re-review; plan checkoff ready, OpenSpec 3.x deferred to Task 5 verification gate
+- plan_task: Task 5: Packaging, Docs, Verification, And Task Completion
+- openspec_task: covers 3.1/3.2/3.3/3.4/3.5/3.6/3.7 plus 5.1/5.2/5.3/5.4/5.5 final verification and checkoff
+- stage: blocked
+- implementation_base: 9084bde
+- brief: .superpowers/sdd/task-5-brief.md
+- report: .superpowers/sdd/task-5-report.md
+- review_round: 0
+- status: Task 5 packaging/docs/automated verification complete; blocked on manual Raycast/macOS/Windows validation before final OpenSpec checkoff and final review
 
 ## Evidence
 
-- red: npm test -- src/companion/renderer.test.ts failed before renderer implementation; isolated temp copy with pre-fix ready-to-show ordering failed `npm test -- src/companion/main.test.ts` with 2 expected ordering assertions
-- green: npm test -- src/companion/main.test.ts passed; npm test -- src/companion/view-model.test.ts src/companion/geometry.test.ts src/companion/state-source.test.ts src/companion/renderer.test.ts src/companion/main.test.ts passed; npm run companion:build passed
+- red: npm test -- src/companion/renderer.test.ts failed before renderer implementation; isolated temp copy with pre-fix ready-to-show ordering failed `npm test -- src/companion/main.test.ts` with 2 expected ordering assertions; npm run build failed at `src/companion/state-source.test.ts(23,44)` with TS2558 before Task 5 fix; npm run lint failed on Prettier for 11 files before Task 5 fix
+- green: npm test passed (12 files / 72 tests); npm run lint passed; npm run build passed; npm run companion:build passed; openspec validate wsl2-monitoring passed; npm run companion:package passed
 - commits: 79d14bb feat: add electron floating companion shell; a8634c8 fix: show companion window after load
 - changed_files: package.json, package-lock.json, scripts/build-companion.mjs, src/companion/main.ts, src/companion/main.test.ts, src/companion/preload.ts, src/companion/renderer.tsx, src/companion/styles.css, src/companion/renderer.test.ts
 
 ## Reviewer Feedback
 
 - batch_review: clean on re-review for de75ece..a8634c8 after report-only TDD evidence patch
-- unresolved: carry forward minor for final review: src/lib/scanners.test.ts uses `as never` casts; recorded follow-up: Codex CLI subagent must not reset parent running state in menu bar
+- unresolved: carry forward minor for final review: src/lib/scanners.test.ts uses `as never` casts; recorded follow-up: Codex CLI subagent must not reset parent running state in menu bar; manual verification pending for OpenSpec 5.3/5.4/5.5
 
 ## Dispatch Log
 
@@ -51,3 +51,5 @@
 - fix 4: 019f28c8-1160-7b92-a938-c442f3a14c95 finishing staged Task 4 ready-to-show/TDD fix, model gpt-5.4
 - reviewer 9: 019f28cb-8544-7d31-af04-5051c304a45e for Task 4 re-review, model gpt-5.4
 - reviewer 10: 019f28d4-250c-70f3-8642-a6c027a1b360 for Task 4 report-evidence re-review, model gpt-5.5, result: clean
+- implementer 7: 019f28da-0076-7963-8f76-34461a3d94aa for Task 5, model gpt-5.4
+- fix 5: 019f28e1-c00b-7892-86f5-523bf39c71b8 for Task 5 build/lint verification blockers, model gpt-5.4

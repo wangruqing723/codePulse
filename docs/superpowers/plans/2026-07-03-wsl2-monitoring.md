@@ -460,7 +460,7 @@ If GUI execution is blocked by sandbox, record the exact command for user-side m
 - Produces script: `companion:package`
 - Produces docs for Windows + WSL2 prerequisites, macOS compatibility, development, packaging, and manual verification.
 
-- [ ] **Step 1: Add packaging**
+- [x] **Step 1: Add packaging**
 
 Run:
 
@@ -485,7 +485,7 @@ dist-companion
 release
 ```
 
-- [ ] **Step 2: Add docs**
+- [x] **Step 2: Add docs**
 
 Create `docs/companion.md` covering:
 
@@ -497,7 +497,7 @@ Create `docs/companion.md` covering:
 - package command: `npm run companion:package`.
 - manual checks for always-on-top, hide/minimize, edge-hide, hover reveal, path copy, WSL unavailable state.
 
-- [ ] **Step 3: Full verification**
+- [x] **Step 3: Full verification**
 
 Run:
 
