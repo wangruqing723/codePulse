@@ -1,11 +1,7 @@
 :root {
   color-scheme: dark;
   font-family:
-    Inter,
-    "SF Pro Display",
-    "PingFang SC",
-    "Microsoft YaHei",
-    sans-serif;
+    Inter, "SF Pro Display", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
 html,
@@ -39,8 +35,8 @@ select {
   gap: 14px;
   padding: 14px;
   background:
-    linear-gradient(180deg, rgba(148, 163, 184, 0.08), rgba(17, 24, 39, 0))
-      0 0 / 100% 92px no-repeat,
+    linear-gradient(180deg, rgba(148, 163, 184, 0.08), rgba(17, 24, 39, 0)) 0
+      0 / 100% 92px no-repeat,
     #111827;
 }
 

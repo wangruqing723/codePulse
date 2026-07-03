@@ -20,7 +20,11 @@ function clampToWorkArea(bounds: Rect, workArea: Rect): Rect {
     width: bounds.width,
     height: bounds.height,
     x: clamp(bounds.x, workArea.x, workArea.x + workArea.width - bounds.width),
-    y: clamp(bounds.y, workArea.y, workArea.y + workArea.height - bounds.height),
+    y: clamp(
+      bounds.y,
+      workArea.y,
+      workArea.y + workArea.height - bounds.height,
+    ),
   };
 }
 

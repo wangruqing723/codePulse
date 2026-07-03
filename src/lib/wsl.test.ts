@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  parseDefaultDistroFromList,
-  parseWslHome,
-  toWslUncPath,
-} from "./wsl";
+import { parseDefaultDistroFromList, parseWslHome, toWslUncPath } from "./wsl";
 
 describe("wsl helpers", () => {
   it("converts absolute WSL paths to UNC paths", () => {
@@ -22,7 +18,9 @@ describe("wsl helpers", () => {
 
   it("parses the default distro from null-padded wsl.exe output", () => {
     expect(
-      parseDefaultDistroFromList("*\u0000 \u0000U\u0000b\u0000u\u0000n\u0000t\u0000u\u0000\n"),
+      parseDefaultDistroFromList(
+        "*\u0000 \u0000U\u0000b\u0000u\u0000n\u0000t\u0000u\u0000\n",
+      ),
     ).toBe("Ubuntu");
   });
 

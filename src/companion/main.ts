@@ -106,7 +106,9 @@ function defaultBounds(): Rect {
     width: WINDOW_WIDTH,
     height: WINDOW_HEIGHT,
     x: workArea.x + workArea.width - WINDOW_WIDTH - 24,
-    y: workArea.y + Math.max(24, Math.round((workArea.height - WINDOW_HEIGHT) / 2)),
+    y:
+      workArea.y +
+      Math.max(24, Math.round((workArea.height - WINDOW_HEIGHT) / 2)),
   };
 }
 
@@ -132,15 +134,25 @@ async function saveWindowState(): Promise<void> {
     hidden: runtimeWindowState.hidden,
   };
 
-  await writeFile(windowStatePath(), `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  await writeFile(
+    windowStatePath(),
+    `${JSON.stringify(payload, null, 2)}\n`,
+    "utf8",
+  );
 }
 
 function nearestEdge(bounds: Rect, workArea: Rect): DockEdge | undefined {
   const distances: Array<[DockEdge, number]> = [
     ["left", Math.abs(bounds.x - workArea.x)],
-    ["right", Math.abs(workArea.x + workArea.width - (bounds.x + bounds.width))],
+    [
+      "right",
+      Math.abs(workArea.x + workArea.width - (bounds.x + bounds.width)),
+    ],
     ["top", Math.abs(bounds.y - workArea.y)],
-    ["bottom", Math.abs(workArea.y + workArea.height - (bounds.y + bounds.height))],
+    [
+      "bottom",
+      Math.abs(workArea.y + workArea.height - (bounds.y + bounds.height)),
+    ],
   ];
 
   const [edge, distance] = distances.sort((a, b) => a[1] - b[1])[0];
@@ -190,7 +202,11 @@ function dockToEdge(edge: DockEdge, hidden: boolean): void {
 }
 
 function revealDockedWindow(): void {
-  if (!mainWindow || !runtimeWindowState?.dockedEdge || !runtimeWindowState.hidden) {
+  if (
+    !mainWindow ||
+    !runtimeWindowState?.dockedEdge ||
+    !runtimeWindowState.hidden
+  ) {
     return;
   }
 
@@ -382,11 +398,15 @@ async function createMainWindow(): Promise<BrowserWindow> {
   });
 
   window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  await loadWindowContentAndShow(window, path.join(__dirname, "index.html"), () => {
-    if (runtimeWindowState?.dockedEdge && runtimeWindowState.hidden) {
-      hideDockedWindow();
-    }
-  });
+  await loadWindowContentAndShow(
+    window,
+    path.join(__dirname, "index.html"),
+    () => {
+      if (runtimeWindowState?.dockedEdge && runtimeWindowState.hidden) {
+        hideDockedWindow();
+      }
+    },
+  );
   window.on("move", scheduleMoveEvaluation);
   window.on("closed", () => {
     mainWindow = undefined;

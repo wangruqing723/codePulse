@@ -18,9 +18,7 @@ function cleanWslOutput(output: string): string {
   return output.replaceAll("\u0000", "").replace(/\r/g, "");
 }
 
-export function parseDefaultDistroFromList(
-  output: string,
-): string | undefined {
+export function parseDefaultDistroFromList(output: string): string | undefined {
   const lines = cleanWslOutput(output)
     .split("\n")
     .map((line) => line.trim())

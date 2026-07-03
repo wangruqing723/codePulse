@@ -434,7 +434,11 @@ describe("configurable scan roots", () => {
     const cwd = "/home/task-1/project/app";
 
     await writeJsonlFixture(
-      path.join(claudeProjectsRoot, "-home-task-1-project-app", "session.jsonl"),
+      path.join(
+        claudeProjectsRoot,
+        "-home-task-1-project-app",
+        "session.jsonl",
+      ),
       [
         {
           type: "user",

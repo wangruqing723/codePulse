@@ -418,9 +418,7 @@ export function applyDebounce(
   });
 }
 
-export async function buildStateFromConfig(
-  config: StateBuildConfig,
-): Promise<{
+export async function buildStateFromConfig(config: StateBuildConfig): Promise<{
   previous?: StateSnapshot;
   snapshot: StateSnapshot;
 }> {

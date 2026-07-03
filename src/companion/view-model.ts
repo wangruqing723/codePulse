@@ -1,5 +1,10 @@
 import { toWslUncPath } from "../lib/wsl";
-import { STATUS_LABEL, type SessionRecord, type SessionStatus, type StateSnapshot } from "../lib/types";
+import {
+  STATUS_LABEL,
+  type SessionRecord,
+  type SessionStatus,
+  type StateSnapshot,
+} from "../lib/types";
 
 export type CompanionPlatform = "darwin" | "win32";
 
@@ -20,10 +25,7 @@ export interface FloatingSessionViewModel {
   copyActions: SessionCopyAction[];
 }
 
-export type FloatingStatus =
-  | SessionStatus
-  | "unavailable"
-  | "empty";
+export type FloatingStatus = SessionStatus | "unavailable" | "empty";
 
 export interface FloatingViewModel {
   status: FloatingStatus;

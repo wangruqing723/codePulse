@@ -1,14 +1,8 @@
 import path from "node:path";
 import type { StateBuildConfig } from "../lib/state";
 import type { Preferences } from "../lib/types";
-import {
-  resolveDefaultWslContext,
-  type WslContext,
-} from "../lib/wsl";
-import type {
-  CompanionPlatform,
-  FloatingViewModelContext,
-} from "./view-model";
+import { resolveDefaultWslContext, type WslContext } from "../lib/wsl";
+import type { CompanionPlatform, FloatingViewModelContext } from "./view-model";
 
 export interface ResolveCompanionStateSourceOptions {
   stateRoot: string;
@@ -34,8 +28,7 @@ export interface UnavailableCompanionStateSource {
 }
 
 export type CompanionStateSource =
-  | AvailableCompanionStateSource
-  | UnavailableCompanionStateSource;
+  AvailableCompanionStateSource | UnavailableCompanionStateSource;
 
 function wslRoot(homeUncPath: string, ...segments: string[]): string {
   return path.win32.join(homeUncPath, ...segments);

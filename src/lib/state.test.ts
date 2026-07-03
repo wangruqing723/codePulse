@@ -430,7 +430,9 @@ describe("configurable state roots", () => {
   });
 
   it("keeps buildState using supportPath events by default", async () => {
-    const supportPath = await mkdtemp(path.join(os.tmpdir(), "codepulse-raycast-"));
+    const supportPath = await mkdtemp(
+      path.join(os.tmpdir(), "codepulse-raycast-"),
+    );
     const cwd = "/tmp/codepulse-default-event-path";
     const eventRoot = path.join(supportPath, "events");
     const timestamp = new Date().toISOString();

@@ -20,7 +20,7 @@ const preferences: Preferences = {
 describe("companion state source", () => {
   it("uses default local scan roots on darwin and skips WSL resolution", async () => {
     const { resolveCompanionStateSource } = await loadStateSourceModule();
-    const resolveDefaultWslContext = vi.fn<[], Promise<WslContext>>();
+    const resolveDefaultWslContext = vi.fn<() => Promise<WslContext>>();
 
     const source = await resolveCompanionStateSource?.("darwin", {
       stateRoot: "/tmp/codepulse-companion",
@@ -40,8 +40,16 @@ describe("companion state source", () => {
         platform: "darwin",
       },
     });
-    expect(source && "stateConfig" in source ? source.stateConfig.scanRoots : undefined).toBeUndefined();
-    expect(source && "stateConfig" in source ? source.stateConfig.eventRoot : undefined).toBeUndefined();
+    expect(
+      source && "stateConfig" in source
+        ? source.stateConfig.scanRoots
+        : undefined,
+    ).toBeUndefined();
+    expect(
+      source && "stateConfig" in source
+        ? source.stateConfig.eventRoot
+        : undefined,
+    ).toBeUndefined();
   });
 
   it("uses resolveDefaultWslContext and builds WSL UNC roots on win32", async () => {
