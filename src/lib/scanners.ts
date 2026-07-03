@@ -15,10 +15,16 @@ const RUNNING_MTIME_WINDOW_MS = 30_000;
 const RECENT_EVENT_LINES = 5_000;
 const RECENT_EVENT_BYTES = 8 * 1024 * 1024;
 
-interface ScanOptions {
+export interface ScanRoots {
+  claudeProjectsRoot: string;
+  codexSessionsRoot: string;
+}
+
+export interface ScanOptions {
   activeWindowMs: number;
   monitorPrefixes: string[];
   now?: number;
+  roots?: Partial<ScanRoots>;
 }
 
 export interface JsonObject {
@@ -423,6 +429,13 @@ export function dedupeSessionsById(sessions: SessionRecord[]): SessionRecord[] {
   return [...byId.values()];
 }
 
+export function defaultScanRoots(): ScanRoots {
+  return {
+    claudeProjectsRoot: expandHome("~/.claude/projects"),
+    codexSessionsRoot: path.join(os.homedir(), ".codex", "sessions"),
+  };
+}
+
 async function scanClaudeFile(
   filePath: string,
   options: ScanOptions,
@@ -549,7 +562,8 @@ async function scanCodexFile(
 export async function scanClaudeSessions(
   options: ScanOptions,
 ): Promise<SessionRecord[]> {
-  const root = expandHome("~/.claude/projects");
+  const root =
+    options.roots?.claudeProjectsRoot ?? defaultScanRoots().claudeProjectsRoot;
   const files = filterClaudeTranscriptFiles(await walkJsonlFiles(root, 4));
   const sessions = await Promise.all(
     files.map((file) => scanClaudeFile(file, options).catch(() => undefined)),
@@ -562,7 +576,8 @@ export async function scanClaudeSessions(
 export async function scanCodexSessions(
   options: ScanOptions,
 ): Promise<SessionRecord[]> {
-  const root = path.join(os.homedir(), ".codex", "sessions");
+  const root =
+    options.roots?.codexSessionsRoot ?? defaultScanRoots().codexSessionsRoot;
   const files = await walkJsonlFiles(root, 6);
   const sessions = await Promise.all(
     files.map((file) => scanCodexFile(file, options).catch(() => undefined)),
@@ -575,9 +590,16 @@ export async function scanCodexSessions(
 export async function scanSessions(
   options: ScanOptions,
 ): Promise<SessionRecord[]> {
+  const resolvedOptions = {
+    ...options,
+    roots: {
+      ...defaultScanRoots(),
+      ...options.roots,
+    },
+  };
   const [claudeSessions, codexSessions] = await Promise.all([
-    scanClaudeSessions(options),
-    scanCodexSessions(options),
+    scanClaudeSessions(resolvedOptions),
+    scanCodexSessions(resolvedOptions),
   ]);
   return [...claudeSessions, ...codexSessions];
 }

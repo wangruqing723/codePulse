@@ -1,5 +1,9 @@
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { applyDebounce, mergeHookEvents } from "./state";
+import * as stateModule from "./state";
+import { applyDebounce, buildState, mergeHookEvents } from "./state";
 import type { HookEvent, SessionRecord, StateSnapshot } from "./types";
 
 function session(patch: Partial<SessionRecord> & Pick<SessionRecord, "id">) {
@@ -342,6 +346,119 @@ describe("state debounce", () => {
         pendingStatus: "done",
         pendingCount: 1,
       },
+    ]);
+  });
+});
+
+describe("configurable state roots", () => {
+  it("builds state from injected roots and writes state.json under stateRoot", async () => {
+    const buildStateFromConfig = (
+      stateModule as {
+        buildStateFromConfig?: (config: {
+          stateRoot: string;
+          eventRoot: string;
+          scanRoots: {
+            claudeProjectsRoot: string;
+            codexSessionsRoot: string;
+          };
+          preferences: {
+            activeWindowMinutes: string;
+            monitorProjects: string;
+          };
+          now: number;
+        }) => Promise<{ snapshot: StateSnapshot }>;
+      }
+    ).buildStateFromConfig;
+    expect(buildStateFromConfig).toBeTypeOf("function");
+    if (!buildStateFromConfig) {
+      return;
+    }
+
+    const tmpRoot = await mkdtemp(path.join(os.tmpdir(), "codepulse-state-"));
+    const stateRoot = path.join(tmpRoot, "state-root");
+    const eventRoot = path.join(tmpRoot, "event-root");
+    const scanRoot = path.join(tmpRoot, "scan-root");
+    const cwd = "/home/task-1/project/app";
+    const now = Date.parse("2026-07-03T12:00:00.000Z");
+    const timestamp = new Date(now).toISOString();
+
+    await mkdir(eventRoot, { recursive: true });
+    await mkdir(scanRoot, { recursive: true });
+    await writeFile(
+      path.join(eventRoot, "event.json"),
+      `${JSON.stringify({
+        id: "hook-1",
+        agent: "claude",
+        kind: "running",
+        timestamp,
+        sessionId: "claude-session",
+        cwd,
+      })}\n`,
+    );
+
+    const { snapshot } = await buildStateFromConfig({
+      stateRoot,
+      eventRoot,
+      scanRoots: {
+        claudeProjectsRoot: path.join(scanRoot, "claude"),
+        codexSessionsRoot: path.join(scanRoot, "codex"),
+      },
+      preferences: {
+        activeWindowMinutes: "5",
+        monitorProjects: "/home/task-1/project",
+      },
+      now,
+    });
+
+    expect(snapshot.sessions).toHaveLength(1);
+    expect(snapshot.sessions[0]).toMatchObject({
+      id: "claude:claude-session",
+      cwd,
+      source: "hook",
+      status: "running",
+    });
+    expect(
+      JSON.parse(await readFile(path.join(stateRoot, "state.json"), "utf8")),
+    ).toMatchObject({
+      sessions: [
+        expect.objectContaining({
+          id: "claude:claude-session",
+          cwd,
+        }),
+      ],
+    });
+  });
+
+  it("keeps buildState using supportPath events by default", async () => {
+    const supportPath = await mkdtemp(path.join(os.tmpdir(), "codepulse-raycast-"));
+    const cwd = "/tmp/codepulse-default-event-path";
+    const eventRoot = path.join(supportPath, "events");
+    const timestamp = new Date().toISOString();
+
+    await mkdir(eventRoot, { recursive: true });
+    await writeFile(
+      path.join(eventRoot, "event.json"),
+      `${JSON.stringify({
+        id: "hook-compat",
+        agent: "claude",
+        kind: "running",
+        timestamp,
+        sessionId: "claude-session",
+        cwd,
+      })}\n`,
+    );
+
+    const { snapshot } = await buildState(supportPath, {
+      activeWindowMinutes: "5",
+      monitorProjects: "/tmp/codepulse-default-event-path",
+    });
+
+    expect(snapshot.sessions).toEqual([
+      expect.objectContaining({
+        id: "claude:claude-session",
+        cwd,
+        source: "hook",
+      }),
     ]);
   });
 });
