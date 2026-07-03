@@ -52,6 +52,7 @@ interface RuntimeWindowState {
 }
 
 type WindowAction = "hide" | "hover-enter" | "hover-leave" | "minimize";
+type ReadyToShowWindow = Pick<BrowserWindow, "loadFile" | "once" | "show">;
 
 let mainWindow: BrowserWindow | undefined;
 let refreshTimer: NodeJS.Timeout | undefined;
@@ -333,6 +334,18 @@ function handleWindowAction(action: WindowAction): void {
   }
 }
 
+export async function loadWindowContentAndShow(
+  window: ReadyToShowWindow,
+  filePath: string,
+  afterShow?: () => void,
+): Promise<void> {
+  window.once("ready-to-show", () => {
+    window.show();
+    afterShow?.();
+  });
+  await window.loadFile(filePath);
+}
+
 async function createMainWindow(): Promise<BrowserWindow> {
   const persisted = await loadWindowState();
   const initialBounds = persisted?.bounds ?? defaultBounds();
@@ -369,9 +382,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
   });
 
   window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  await window.loadFile(path.join(__dirname, "index.html"));
-  window.once("ready-to-show", () => {
-    window.show();
+  await loadWindowContentAndShow(window, path.join(__dirname, "index.html"), () => {
     if (runtimeWindowState?.dockedEdge && runtimeWindowState.hidden) {
       hideDockedWindow();
     }
