@@ -1,0 +1,14 @@
+{
+  "change": "wsl2-monitoring",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "b1b65a3c6127eb2cb1e967493dc2772254494b52246d7061ebbc2c1e1ac21c67",
+  "files": [
+    { "path": "openspec/changes/wsl2-monitoring/proposal.md", "sha256": "b5e66abdfe6c54e02c60997de74133b2cb1c9f63dc9bff2eaac96461c365d424" },
+    { "path": "openspec/changes/wsl2-monitoring/design.md", "sha256": "4e4a06939f6d8f31c1b9498aafbe9af77077cb9c5123e8e241857ae94f13602e" },
+    { "path": "openspec/changes/wsl2-monitoring/tasks.md", "sha256": "93371c6414d2e494753a7be5aa4d1ba2d1b2f64244b83ece1dd3fcfd9f0dce03" },
+    { "path": "openspec/changes/wsl2-monitoring/specs/wsl2-monitoring/spec.md", "sha256": "f779d28fa703acd76cc5c5b428dd10a6f7f2ada60f16c00496b72b10ec9ebda2" }
+  ]
+}
