@@ -1,8 +1,8 @@
 ## 1. 共享状态与 WSL2 路径基础
 
-- [ ] 1.1 抽象扫描 root 配置，使 Claude/Codex 扫描可接收 macOS home 或 Windows WSL UNC root
-- [ ] 1.2 新增默认 WSL2 distro 探测与 WSL path 到 Windows UNC path 的转换工具
-- [ ] 1.3 为 WSL path、UNC path、monitor prefix 匹配补充单元测试
+- [x] 1.1 抽象扫描 root 配置，使 Claude/Codex 扫描可接收 macOS home 或 Windows WSL UNC root
+- [x] 1.2 新增默认 WSL2 distro 探测与 WSL path 到 Windows UNC path 的转换工具
+- [x] 1.3 为 WSL path、UNC path、monitor prefix 匹配补充单元测试
 
 ## 2. WSL2 transcript、事件读取与 macOS 兼容
 

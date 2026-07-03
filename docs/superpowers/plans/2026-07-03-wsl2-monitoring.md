@@ -79,7 +79,7 @@ base-ref: 9d9fe2904367ae25730ba1aa5dc1ac474a9b3607
 - Produces: `ScanRoots`, `defaultScanRoots()`, `StateBuildConfig`, `buildStateFromConfig(config)`
 - Keeps: `buildState(supportPath, preferences)` behavior for Raycast.
 
-- [ ] **Step 1: Write failing WSL tests**
+- [x] **Step 1: Write failing WSL tests**
 
 Create `src/lib/wsl.test.ts` with tests for:
 
@@ -97,7 +97,7 @@ Run: `npm test -- src/lib/wsl.test.ts`
 
 Expected: FAIL because `src/lib/wsl.ts` does not exist.
 
-- [ ] **Step 2: Implement WSL helpers**
+- [x] **Step 2: Implement WSL helpers**
 
 Create `src/lib/wsl.ts` with:
 
@@ -163,7 +163,7 @@ Run: `npm test -- src/lib/wsl.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 3: Add configurable scanner and state tests**
+- [x] **Step 3: Add configurable scanner and state tests**
 
 Add tests proving:
 
@@ -181,7 +181,7 @@ npm test -- src/lib/paths.test.ts src/lib/scanners.test.ts src/lib/state.test.ts
 
 Expected: FAIL before implementation.
 
-- [ ] **Step 4: Implement configurable roots**
+- [x] **Step 4: Implement configurable roots**
 
 Modify `src/lib/paths.ts`, `src/lib/scanners.ts`, and `src/lib/state.ts` so:
 
