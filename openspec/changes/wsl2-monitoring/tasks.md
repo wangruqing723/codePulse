@@ -24,9 +24,9 @@
 
 ## 4. Hook 安装与入口分工
 
-- [ ] 4.1 让 Windows/WSL hook 脚本写入 WSL-local CodePulse events 目录
-- [ ] 4.2 更新 Raycast Setup/健康检查，使其展示 companion 与 WSL hook 的状态但不管理 companion 进程
-- [ ] 4.3 保持 macOS hook 安装、supportPath events、menu-bar 和文件扫描行为不变
+- [x] 4.1 让 Windows/WSL hook 脚本写入 WSL-local CodePulse events 目录
+- [x] 4.2 更新 Raycast Setup/健康检查，使其展示 companion 与 WSL hook 的状态但不管理 companion 进程
+- [x] 4.3 保持 macOS hook 安装、supportPath events、menu-bar 和文件扫描行为不变
 
 ## 5. 打包与验证
 

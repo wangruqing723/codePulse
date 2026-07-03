@@ -212,7 +212,7 @@ Expected: PASS.
 - Keeps: `installHooks(environment.supportPath, target)`, `uninstallHooks(environment.supportPath, target)`, and `getHookInstallStatus(environment.supportPath)` working.
 - Adds: Setup view shows companion/WSL status without launching companion.
 
-- [ ] **Step 1: Write failing hook event root tests**
+- [x] **Step 1: Write failing hook event root tests**
 
 Add tests proving:
 
@@ -239,7 +239,7 @@ Run: `npm test -- src/lib/hooks.test.ts`
 
 Expected: FAIL before implementation.
 
-- [ ] **Step 2: Implement hook options without changing macOS defaults**
+- [x] **Step 2: Implement hook options without changing macOS defaults**
 
 Modify `src/lib/hooks.ts`:
 
@@ -267,7 +267,7 @@ npm run build
 
 Expected: PASS.
 
-- [ ] **Step 3: Update Setup separation copy**
+- [x] **Step 3: Update Setup separation copy**
 
 Modify `src/setup-hooks.tsx` to add a non-action health/list item:
 
