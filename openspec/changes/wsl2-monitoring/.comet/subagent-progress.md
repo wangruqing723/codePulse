@@ -8,25 +8,25 @@
 
 ## Current Task
 
-- plan_task: Task 2: Hook Event Roots And macOS Compatibility
-- openspec_task: 4. Hook 安装与入口分工
+- plan_task: Task 3: Floating Companion View Model And Geometry
+- openspec_task: no direct OpenSpec checkbox; supports later 3.2/3.5/3.6/3.7 completion
 - stage: checkoff
-- implementation_base: da53eba
-- brief: .superpowers/sdd/task-2-brief.md
-- report: .superpowers/sdd/task-2-report.md
+- implementation_base: 2d6c977
+- brief: .superpowers/sdd/task-3-brief.md
+- report: .superpowers/sdd/task-3-report.md
 - review_round: 0
-- status: task approved and checked off
+- status: task approved via main-session fallback review and checked off
 
 ## Evidence
 
-- red: npm test -- src/lib/hooks.test.ts failed before hook event root implementation
-- green: npm test -- src/lib/hooks.test.ts passed; npm run build passed
-- commits: 1d5a571 feat: add hook event root options; 311de04 chore: remove task report from tracked files
-- changed_files: src/lib/hooks.ts, src/lib/hooks.test.ts, src/setup-hooks.tsx
+- red: npm test -- src/companion/view-model.test.ts failed; npm test -- src/companion/geometry.test.ts failed; npm test -- src/companion/state-source.test.ts failed before implementation
+- green: npm test -- src/companion/view-model.test.ts passed; npm test -- src/companion/geometry.test.ts passed; npm test -- src/companion/state-source.test.ts passed
+- commits: 2c43123 feat: add companion view model helpers
+- changed_files: src/companion/view-model.ts, src/companion/view-model.test.ts, src/companion/geometry.ts, src/companion/geometry.test.ts, src/companion/state-source.ts, src/companion/state-source.test.ts, .superpowers/sdd/task-3-report.md
 
 ## Reviewer Feedback
 
-- batch_review: approved by reviewer 019f2886-65d4-7a30-a569-d319eb6d87cd
+- batch_review: approved via main-session fallback review after tracked report cleanup
 - unresolved: carry forward minor for final review: src/lib/scanners.test.ts uses `as never` casts
 
 ## Dispatch Log
@@ -39,3 +39,8 @@
 - reviewer 3: 019f2880-e97d-72d3-abc8-56bb252e10f1 for Task 2, model gpt-5.5
 - fix 1: 019f2883-1a9f-71d0-b98d-ed7a03e8c3e6 for Task 2 review finding, model gpt-5.4
 - reviewer 4: 019f2886-65d4-7a30-a569-d319eb6d87cd for Task 2 re-review, model gpt-5.5
+- implementer 4: 019f2892-6762-71c3-9f52-e7fc4eb6af94 for Task 3, model gpt-5.4
+- reviewer 5: 019f289b-6fd6-7d71-bc7d-f4152a656f71 for Task 3, model gpt-5.5
+- reviewer 6: 019f289c-5f75-7a80-b28b-1487d93d5308 for Task 3 retry, model gpt-5.5
+- reviewer 7: 019f289d-71c7-7d83-b24d-a5491cc63d23 for Task 3 retry, model gpt-5.4
+- fix 2: 019f289e-e3c1-7651-8d8f-ff3622c8cb7c for Task 3 tracked report cleanup, model gpt-5.4

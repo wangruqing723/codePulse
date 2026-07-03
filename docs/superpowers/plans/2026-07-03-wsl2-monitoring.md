@@ -302,7 +302,7 @@ Expected: PASS.
 - Produces: `revealedBounds(hidden, previousFullBounds, displayWorkArea)`
 - Produces: `resolveCompanionStateSource(platform, options)`
 
-- [ ] **Step 1: Write failing view model tests**
+- [x] **Step 1: Write failing view model tests**
 
 Test:
 
@@ -316,7 +316,7 @@ Run: `npm test -- src/companion/view-model.test.ts`
 
 Expected: FAIL before implementation.
 
-- [ ] **Step 2: Implement view model**
+- [x] **Step 2: Implement view model**
 
 Create `src/companion/view-model.ts` with pure functions only. It must not import Electron.
 
@@ -324,7 +324,7 @@ Run: `npm test -- src/companion/view-model.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 3: Write failing geometry tests**
+- [x] **Step 3: Write failing geometry tests**
 
 Test:
 
@@ -337,7 +337,7 @@ Run: `npm test -- src/companion/geometry.test.ts`
 
 Expected: FAIL before implementation.
 
-- [ ] **Step 4: Implement geometry helpers**
+- [x] **Step 4: Implement geometry helpers**
 
 Create `src/companion/geometry.ts` with plain `{ x, y, width, height }` types and no Electron imports.
 
@@ -345,7 +345,7 @@ Run: `npm test -- src/companion/geometry.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 5: Add state source tests and implementation**
+- [x] **Step 5: Add state source tests and implementation**
 
 Test that:
 
