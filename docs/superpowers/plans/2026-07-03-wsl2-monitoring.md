@@ -374,7 +374,7 @@ Expected: PASS after implementation.
 - Consumes: `geometry` helpers
 - Produces scripts: `companion:dev`, `companion:build`
 
-- [ ] **Step 1: Add Electron dependency and build scripts**
+- [x] **Step 1: Add Electron dependency and build scripts**
 
 Run:
 
@@ -395,7 +395,7 @@ Add scripts:
 
 If adding `scripts/build-companion.mjs`, include main, preload, renderer, CSS, and asset copy steps explicitly.
 
-- [ ] **Step 2: Implement main process**
+- [x] **Step 2: Implement main process**
 
 `src/companion/main.ts` must:
 
@@ -411,7 +411,7 @@ Run: `npm run companion:build`
 
 Expected: PASS.
 
-- [ ] **Step 3: Implement renderer**
+- [x] **Step 3: Implement renderer**
 
 Renderer must show:
 
@@ -432,7 +432,7 @@ npm run companion:build
 
 Expected: PASS.
 
-- [ ] **Step 4: Manual dev check**
+- [x] **Step 4: Manual dev check**
 
 Run `npm run companion:dev` on macOS if GUI execution is available.
 
