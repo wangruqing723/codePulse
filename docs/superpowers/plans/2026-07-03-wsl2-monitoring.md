@@ -513,7 +513,7 @@ Expected: all commands PASS.
 
 Run `npm run companion:package` on target platforms when available. If current platform cannot produce both Windows and macOS artifacts, record that target-platform packaging still needs target-platform execution.
 
-- [ ] **Step 4: Mark OpenSpec tasks complete after implementation**
+- [x] **Step 4: Mark OpenSpec tasks complete after implementation**
 
 Only after implementation and verification pass, update `openspec/changes/wsl2-monitoring/tasks.md` checkboxes from `[ ]` to `[x]`.
 
