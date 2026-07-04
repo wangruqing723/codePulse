@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { FloatingViewModel } from "./view-model";
 
 type RendererModule = typeof import("./renderer");
@@ -54,6 +54,16 @@ describe("companion renderer html", () => {
     expect(html).toContain("复制路径");
   });
 
+  it("uses a narrow drag handle instead of making the whole header draggable", async () => {
+    const { renderFloatingHtml } = await loadRendererModule();
+
+    const html = renderFloatingHtml?.(createModel({}));
+
+    expect(html).toContain('<header class="header">');
+    expect(html).not.toContain('<header class="header drag-region">');
+    expect(html).toContain('class="drag-handle drag-region"');
+  });
+
   it("renders unavailable detail and empty state text", async () => {
     const { renderFloatingHtml } = await loadRendererModule();
 
@@ -78,5 +88,50 @@ describe("companion renderer html", () => {
     expect(unavailableHtml).toContain("WSL 不可用");
     expect(unavailableHtml).toContain("wsl.exe exited with code 1");
     expect(emptyHtml).toContain("暂无活跃会话");
+  });
+});
+
+describe("companion renderer hover intent", () => {
+  it("delays hover-leave hide and cancels it when hover re-enters quickly", async () => {
+    vi.useFakeTimers();
+    const { createHoverIntentController } = await loadRendererModule();
+    const requestWindowAction = vi.fn();
+
+    const hover = createHoverIntentController?.(
+      {
+        requestWindowAction,
+      } as never,
+      { hideDelayMs: 180 },
+    );
+
+    hover?.onPointerEnter();
+    hover?.onPointerLeave();
+    vi.advanceTimersByTime(120);
+    hover?.onPointerEnter();
+    vi.advanceTimersByTime(120);
+
+    expect(requestWindowAction.mock.calls).toEqual([["hover-enter"], ["hover-enter"]]);
+    vi.useRealTimers();
+  });
+
+  it("fires hover-leave only after the delay elapses", async () => {
+    vi.useFakeTimers();
+    const { createHoverIntentController } = await loadRendererModule();
+    const requestWindowAction = vi.fn();
+
+    const hover = createHoverIntentController?.(
+      {
+        requestWindowAction,
+      } as never,
+      { hideDelayMs: 180 },
+    );
+
+    hover?.onPointerLeave();
+    vi.advanceTimersByTime(179);
+    expect(requestWindowAction).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+    expect(requestWindowAction.mock.calls).toEqual([["hover-leave"]]);
+    vi.useRealTimers();
   });
 });

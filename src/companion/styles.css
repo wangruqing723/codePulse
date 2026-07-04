@@ -32,19 +32,27 @@ select {
   height: 100%;
   display: grid;
   grid-template-rows: auto 1fr;
-  gap: 14px;
-  padding: 14px;
+  gap: 12px;
+  padding: 12px;
   background:
     linear-gradient(180deg, rgba(148, 163, 184, 0.08), rgba(17, 24, 39, 0)) 0
-      0 / 100% 92px no-repeat,
+      0 / 100% 78px no-repeat,
     #111827;
 }
 
 .header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
+}
+
+.header-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .drag-region {
@@ -58,7 +66,7 @@ select {
 .header-copy {
   min-width: 0;
   display: grid;
-  gap: 6px;
+  gap: 4px;
 }
 
 .eyebrow {
@@ -71,10 +79,26 @@ select {
 
 .status-text {
   margin: 0;
-  font-size: 30px;
-  line-height: 1.05;
+  font-size: 22px;
+  line-height: 1.1;
   font-weight: 700;
   text-wrap: balance;
+}
+
+.drag-handle {
+  flex: 0 0 44px;
+  height: 28px;
+  border-radius: 8px;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(148, 163, 184, 0.22) 0 22%,
+      transparent 22% 39%,
+      rgba(148, 163, 184, 0.22) 39% 61%,
+      transparent 61% 78%,
+      rgba(148, 163, 184, 0.22) 78% 100%
+    );
+  opacity: 0.78;
 }
 
 .window-actions {
@@ -85,9 +109,9 @@ select {
 
 .window-button {
   box-sizing: border-box;
-  min-width: 58px;
-  height: 30px;
-  padding: 0 10px;
+  min-width: 54px;
+  height: 28px;
+  padding: 0 9px;
   border: 1px solid rgba(148, 163, 184, 0.28);
   border-radius: 8px;
   background: rgba(15, 23, 42, 0.72);
@@ -113,7 +137,7 @@ select {
 .session-item {
   display: grid;
   gap: 6px;
-  padding: 10px 12px;
+  padding: 9px 11px;
   border: 1px solid rgba(148, 163, 184, 0.16);
   border-radius: 8px;
   background: rgba(15, 23, 42, 0.7);

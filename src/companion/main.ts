@@ -32,6 +32,7 @@ const VISIBLE_SLIVER_PX = 28;
 const EDGE_THRESHOLD_PX = 48;
 const MOVE_SETTLE_MS = 180;
 const PROGRAMMATIC_MOVE_SUPPRESS_MS = 220;
+const HOVER_LEAVE_HIDE_DELAY_MS = MOVE_SETTLE_MS + 80;
 const WINDOW_STATE_FILE = "window-state.json";
 const DEFAULT_PREFERENCES: Preferences = {
   activeWindowMinutes: process.env.CODEPULSE_ACTIVE_WINDOW_MINUTES ?? "5",
@@ -57,6 +58,7 @@ type ReadyToShowWindow = Pick<BrowserWindow, "loadFile" | "once" | "show">;
 let mainWindow: BrowserWindow | undefined;
 let refreshTimer: NodeJS.Timeout | undefined;
 let moveTimer: NodeJS.Timeout | undefined;
+let hideTimer: NodeJS.Timeout | undefined;
 let suppressMoveEventsUntil = 0;
 let currentModel: FloatingViewModel = buildFloatingViewModel(undefined, {
   platform: platformForHost(),
@@ -202,6 +204,7 @@ function dockToEdge(edge: DockEdge, hidden: boolean): void {
 }
 
 function revealDockedWindow(): void {
+  clearTimeout(hideTimer);
   if (
     !mainWindow ||
     !runtimeWindowState?.dockedEdge ||
@@ -228,6 +231,7 @@ function revealDockedWindow(): void {
 }
 
 function hideDockedWindow(): void {
+  clearTimeout(hideTimer);
   if (!runtimeWindowState?.dockedEdge) {
     dockToEdge("right", true);
     return;
@@ -305,6 +309,8 @@ function scheduleMoveEvaluation(): void {
     return;
   }
 
+  clearTimeout(hideTimer);
+
   if (Date.now() < suppressMoveEventsUntil) {
     return;
   }
@@ -331,6 +337,16 @@ function scheduleMoveEvaluation(): void {
   }, MOVE_SETTLE_MS);
 }
 
+function scheduleDockedHide(): void {
+  clearTimeout(hideTimer);
+  hideTimer = setTimeout(() => {
+    hideTimer = undefined;
+    if (runtimeWindowState?.dockedEdge) {
+      hideDockedWindow();
+    }
+  }, HOVER_LEAVE_HIDE_DELAY_MS);
+}
+
 function handleWindowAction(action: WindowAction): void {
   switch (action) {
     case "hide":
@@ -341,7 +357,7 @@ function handleWindowAction(action: WindowAction): void {
       break;
     case "hover-leave":
       if (runtimeWindowState?.dockedEdge) {
-        hideDockedWindow();
+        scheduleDockedHide();
       }
       break;
     case "minimize":
@@ -411,6 +427,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
   window.on("closed", () => {
     mainWindow = undefined;
     clearTimeout(moveTimer);
+    clearTimeout(hideTimer);
   });
 
   return window;
@@ -429,15 +446,42 @@ function registerIpcHandlers(): void {
   });
 }
 
-async function start(): Promise<void> {
-  app.setName("CodePulse Companion");
-  mainWindow = await createMainWindow();
-  registerIpcHandlers();
-
-  await refreshModelOnce();
+function startRefreshTimer(): void {
   refreshTimer = setInterval(() => {
     void refreshModelOnce();
   }, REFRESH_INTERVAL_MS);
+}
+
+interface StartupHooks {
+  registerIpcHandlers: () => void;
+  createMainWindow: () => Promise<BrowserWindow | void>;
+  refreshModelOnce: () => Promise<void>;
+  startRefreshTimer: () => void;
+}
+
+export async function initializeCompanionStartup({
+  registerIpcHandlers,
+  createMainWindow,
+  refreshModelOnce,
+  startRefreshTimer,
+}: StartupHooks): Promise<void> {
+  registerIpcHandlers();
+  await createMainWindow();
+  await refreshModelOnce();
+  startRefreshTimer();
+}
+
+async function start(): Promise<void> {
+  app.setName("CodePulse Companion");
+  await initializeCompanionStartup({
+    registerIpcHandlers,
+    createMainWindow: async () => {
+      mainWindow = await createMainWindow();
+      return mainWindow;
+    },
+    refreshModelOnce,
+    startRefreshTimer,
+  });
 }
 
 app.whenReady().then(() => {
@@ -446,9 +490,11 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
   clearInterval(refreshTimer);
+  clearTimeout(hideTimer);
   app.quit();
 });
 
 app.on("before-quit", () => {
   clearInterval(refreshTimer);
+  clearTimeout(hideTimer);
 });

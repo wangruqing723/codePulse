@@ -64,6 +64,33 @@ describe("companion main window display flow", () => {
     vi.clearAllMocks();
   });
 
+  it("registers ipc handlers before creating the window", async () => {
+    const mainModule = await import("./main");
+    const order: string[] = [];
+
+    await mainModule.initializeCompanionStartup?.({
+      registerIpcHandlers: () => {
+        order.push("register-ipc");
+      },
+      createMainWindow: async () => {
+        order.push("create-window");
+      },
+      refreshModelOnce: async () => {
+        order.push("refresh");
+      },
+      startRefreshTimer: () => {
+        order.push("timer");
+      },
+    });
+
+    expect(order).toEqual([
+      "register-ipc",
+      "create-window",
+      "refresh",
+      "timer",
+    ]);
+  });
+
   it("registers ready-to-show before awaiting loadFile so an early event still shows the window", async () => {
     const mainModule = await import("./main");
     const order: string[] = [];

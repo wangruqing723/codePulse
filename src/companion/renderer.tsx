@@ -16,6 +16,7 @@ const initialModel: FloatingViewModel = {
   text: "暂无活跃会话",
   sessions: [],
 };
+const HOVER_LEAVE_DELAY_MS = 260;
 
 function escapeHtml(value: string): string {
   return value
@@ -89,10 +90,13 @@ function renderSessions(model: FloatingViewModel): string {
 export function renderFloatingHtml(model: FloatingViewModel): string {
   return `
     <section class="shell" data-status="${escapeHtml(model.status)}">
-      <header class="header drag-region">
-        <div class="header-copy">
-          <p class="eyebrow">CodePulse</p>
-          <h1 class="status-text">${escapeHtml(model.text)}</h1>
+      <header class="header">
+        <div class="header-main">
+          <div class="header-copy">
+            <p class="eyebrow">CodePulse</p>
+            <h1 class="status-text">${escapeHtml(model.text)}</h1>
+          </div>
+          <div class="drag-handle drag-region" aria-hidden="true"></div>
         </div>
         <div class="window-actions no-drag">
           <button type="button" class="window-button" data-action="hide">隐藏</button>
@@ -108,12 +112,46 @@ function renderIntoRoot(root: HTMLElement, model: FloatingViewModel): void {
   root.innerHTML = renderFloatingHtml(model);
 }
 
+interface HoverIntentController {
+  onPointerEnter(): void;
+  onPointerLeave(): void;
+}
+
+interface HoverIntentOptions {
+  hideDelayMs?: number;
+}
+
+export function createHoverIntentController(
+  bridge: Pick<CompanionBridge, "requestWindowAction">,
+  options: HoverIntentOptions = {},
+): HoverIntentController {
+  const hideDelayMs = options.hideDelayMs ?? HOVER_LEAVE_DELAY_MS;
+  let hideTimer: ReturnType<typeof setTimeout> | undefined;
+
+  return {
+    onPointerEnter() {
+      clearTimeout(hideTimer);
+      hideTimer = undefined;
+      bridge.requestWindowAction("hover-enter");
+    },
+    onPointerLeave() {
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => {
+        hideTimer = undefined;
+        bridge.requestWindowAction("hover-leave");
+      }, hideDelayMs);
+    },
+  };
+}
+
 function bindInteractions(root: HTMLElement, bridge: CompanionBridge): void {
+  const hoverIntent = createHoverIntentController(bridge);
+
   root.addEventListener("mouseenter", () => {
-    bridge.requestWindowAction("hover-enter");
+    hoverIntent.onPointerEnter();
   });
   root.addEventListener("mouseleave", () => {
-    bridge.requestWindowAction("hover-leave");
+    hoverIntent.onPointerLeave();
   });
   root.addEventListener("click", async (event) => {
     const target = event.target;
