@@ -128,6 +128,7 @@ export function createHoverIntentController(
 ): HoverIntentController {
   const hideDelayMs = options.hideDelayMs ?? HOVER_LEAVE_DELAY_MS;
   let hideTimer: ReturnType<typeof setTimeout> | undefined;
+  let ignorePointerLeaveUntilEnter = false;
   const clearPendingHide = (): void => {
     clearTimeout(hideTimer);
     hideTimer = undefined;
@@ -135,10 +136,15 @@ export function createHoverIntentController(
 
   return {
     onPointerEnter() {
+      ignorePointerLeaveUntilEnter = false;
       clearPendingHide();
       bridge.requestWindowAction("hover-enter");
     },
     onPointerLeave() {
+      if (ignorePointerLeaveUntilEnter) {
+        return;
+      }
+
       clearPendingHide();
       hideTimer = setTimeout(() => {
         hideTimer = undefined;
@@ -146,6 +152,7 @@ export function createHoverIntentController(
       }, hideDelayMs);
     },
     onWindowAction(action) {
+      ignorePointerLeaveUntilEnter = true;
       clearPendingHide();
       bridge.requestWindowAction(action);
     },
