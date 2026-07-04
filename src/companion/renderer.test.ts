@@ -134,4 +134,29 @@ describe("companion renderer hover intent", () => {
     expect(requestWindowAction.mock.calls).toEqual([["hover-leave"]]);
     vi.useRealTimers();
   });
+
+  it("cancels pending hover-leave when minimize is triggered", async () => {
+    vi.useFakeTimers();
+    const { createHoverIntentController } = await loadRendererModule();
+    const requestWindowAction = vi.fn();
+
+    const hover = createHoverIntentController?.(
+      {
+        requestWindowAction,
+      } as never,
+      { hideDelayMs: 180 },
+    ) as
+      | {
+          onPointerLeave?: () => void;
+          onWindowAction?: (action: "hide" | "minimize") => void;
+        }
+      | undefined;
+
+    hover?.onPointerLeave?.();
+    hover?.onWindowAction?.("minimize");
+    vi.advanceTimersByTime(180);
+
+    expect(requestWindowAction.mock.calls).toEqual([["minimize"]]);
+    vi.useRealTimers();
+  });
 });

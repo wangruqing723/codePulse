@@ -115,6 +115,7 @@ function renderIntoRoot(root: HTMLElement, model: FloatingViewModel): void {
 interface HoverIntentController {
   onPointerEnter(): void;
   onPointerLeave(): void;
+  onWindowAction(action: "hide" | "minimize"): void;
 }
 
 interface HoverIntentOptions {
@@ -127,19 +128,26 @@ export function createHoverIntentController(
 ): HoverIntentController {
   const hideDelayMs = options.hideDelayMs ?? HOVER_LEAVE_DELAY_MS;
   let hideTimer: ReturnType<typeof setTimeout> | undefined;
+  const clearPendingHide = (): void => {
+    clearTimeout(hideTimer);
+    hideTimer = undefined;
+  };
 
   return {
     onPointerEnter() {
-      clearTimeout(hideTimer);
-      hideTimer = undefined;
+      clearPendingHide();
       bridge.requestWindowAction("hover-enter");
     },
     onPointerLeave() {
-      clearTimeout(hideTimer);
+      clearPendingHide();
       hideTimer = setTimeout(() => {
         hideTimer = undefined;
         bridge.requestWindowAction("hover-leave");
       }, hideDelayMs);
+    },
+    onWindowAction(action) {
+      clearPendingHide();
+      bridge.requestWindowAction(action);
     },
   };
 }
@@ -161,7 +169,7 @@ function bindInteractions(root: HTMLElement, bridge: CompanionBridge): void {
 
     const action = target.dataset.action;
     if (action === "hide" || action === "minimize") {
-      bridge.requestWindowAction(action);
+      hoverIntent.onWindowAction(action);
       return;
     }
 
