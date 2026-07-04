@@ -212,6 +212,58 @@ describe("companion main window display flow", () => {
     expect(listeners.get("restore")).toBeTypeOf("function");
   });
 
+  it("starts from full bounds when persisted state was edge-hidden", async () => {
+    const mainModule = await import("./main");
+
+    expect(
+      mainModule.__testing__.resolveInitialWindowState,
+    ).toBeTypeOf("function");
+
+    const resolved = mainModule.__testing__.resolveInitialWindowState?.(
+      {
+        bounds: {
+          x: 1412,
+          y: 200,
+          width: 340,
+          height: 360,
+        },
+        fullBounds: {
+          x: 1100,
+          y: 200,
+          width: 340,
+          height: 360,
+        },
+        dockedEdge: "right",
+        hidden: true,
+      },
+      {
+        x: 1076,
+        y: 270,
+        width: 340,
+        height: 360,
+      },
+    );
+
+    expect(resolved).toEqual({
+      initialBounds: {
+        x: 1100,
+        y: 200,
+        width: 340,
+        height: 360,
+      },
+      runtimeState: {
+        fullBounds: {
+          x: 1100,
+          y: 200,
+          width: 340,
+          height: 360,
+        },
+        dockedEdge: "right",
+        hidden: false,
+      },
+    });
+  });
+
   it("registers force-exit IPC without routing it through window action handling", async () => {
     const mainModule = await import("./main");
 

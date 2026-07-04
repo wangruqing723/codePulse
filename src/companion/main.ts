@@ -56,6 +56,11 @@ interface RuntimeWindowState {
   hidden: boolean;
 }
 
+interface InitialWindowState {
+  initialBounds: Rect;
+  runtimeState: RuntimeWindowState;
+}
+
 type WindowAction =
   "force-exit" | "hide" | "hover-enter" | "hover-leave" | "minimize";
 type ReadyToShowWindow = Pick<BrowserWindow, "loadFile" | "once" | "show">;
@@ -127,6 +132,26 @@ function defaultBounds(): Rect {
     y:
       workArea.y +
       Math.max(24, Math.round((workArea.height - WINDOW_HEIGHT) / 2)),
+  };
+}
+
+function resolveInitialWindowState(
+  persisted: PersistedWindowState | undefined,
+  fallbackBounds: Rect,
+): InitialWindowState {
+  const fullBounds = persisted?.fullBounds ?? persisted?.bounds ?? fallbackBounds;
+  const shouldRevealPersistedHiddenState =
+    !!persisted?.hidden && !!persisted.dockedEdge;
+
+  return {
+    initialBounds: shouldRevealPersistedHiddenState
+      ? fullBounds
+      : (persisted?.bounds ?? fallbackBounds),
+    runtimeState: {
+      fullBounds,
+      dockedEdge: persisted?.dockedEdge,
+      hidden: shouldRevealPersistedHiddenState ? false : (persisted?.hidden ?? false),
+    },
   };
 }
 
@@ -438,12 +463,11 @@ export async function loadWindowContentAndShow(
 
 async function createMainWindow(): Promise<BrowserWindow> {
   const persisted = await loadWindowState();
-  const initialBounds = persisted?.bounds ?? defaultBounds();
-  runtimeWindowState = {
-    fullBounds: persisted?.fullBounds ?? initialBounds,
-    dockedEdge: persisted?.dockedEdge,
-    hidden: persisted?.hidden ?? false,
-  };
+  const { initialBounds, runtimeState } = resolveInitialWindowState(
+    persisted,
+    defaultBounds(),
+  );
+  runtimeWindowState = runtimeState;
 
   const iconPath = path.join(__dirname, "assets", "codepulse-icon-v2.png");
   const window = new BrowserWindow({
@@ -492,6 +516,7 @@ export const __testing__ = {
     runtimeWindowState,
   handleWindowAction,
   registerIpcHandlers,
+  resolveInitialWindowState,
   resetState: (): void => {
     mainWindow = undefined;
     refreshTimer = undefined;
