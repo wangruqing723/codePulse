@@ -215,9 +215,9 @@ describe("companion main window display flow", () => {
   it("starts from full bounds when persisted state was edge-hidden", async () => {
     const mainModule = await import("./main");
 
-    expect(
-      mainModule.__testing__.resolveInitialWindowState,
-    ).toBeTypeOf("function");
+    expect(mainModule.__testing__.resolveInitialWindowState).toBeTypeOf(
+      "function",
+    );
 
     const resolved = mainModule.__testing__.resolveInitialWindowState?.(
       {

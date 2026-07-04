@@ -139,7 +139,8 @@ function resolveInitialWindowState(
   persisted: PersistedWindowState | undefined,
   fallbackBounds: Rect,
 ): InitialWindowState {
-  const fullBounds = persisted?.fullBounds ?? persisted?.bounds ?? fallbackBounds;
+  const fullBounds =
+    persisted?.fullBounds ?? persisted?.bounds ?? fallbackBounds;
   const shouldRevealPersistedHiddenState =
     !!persisted?.hidden && !!persisted.dockedEdge;
 
@@ -150,7 +151,9 @@ function resolveInitialWindowState(
     runtimeState: {
       fullBounds,
       dockedEdge: persisted?.dockedEdge,
-      hidden: shouldRevealPersistedHiddenState ? false : (persisted?.hidden ?? false),
+      hidden: shouldRevealPersistedHiddenState
+        ? false
+        : (persisted?.hidden ?? false),
     },
   };
 }
