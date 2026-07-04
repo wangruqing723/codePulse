@@ -1,3 +1,6 @@
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildClaudeHookCommand,
@@ -6,6 +9,7 @@ import {
   upsertCodePulseClaudeHook,
   upsertCodePulseCodexNotify,
 } from "./hooks";
+import * as hooks from "./hooks";
 
 const SCRIPT_PATH = "/tmp/codepulse-hook";
 const NOTIFY_LINE = `notify = ["${SCRIPT_PATH}", "codex"]`;
@@ -118,5 +122,48 @@ describe("Codex notify config", () => {
     );
 
     expect(next).toBe('model = "gpt-5.5"\n\n[mcp_servers]\n');
+  });
+});
+
+function getWriteHookScript(): (
+  input: string | { supportPath: string; eventRoot?: string },
+) => Promise<string> {
+  const candidate = (hooks as Record<string, unknown>).writeHookScript;
+  expect(candidate).toBeTypeOf("function");
+  return candidate as (
+    input: string | { supportPath: string; eventRoot?: string },
+  ) => Promise<string>;
+}
+
+describe("Hook script event roots", () => {
+  it("writes hook script with explicit event root", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "codepulse-hooks-"));
+
+    try {
+      const scriptPath = await getWriteHookScript()({
+        supportPath: root,
+        eventRoot: "/home/user/.codepulse/events",
+      });
+
+      expect(await readFile(scriptPath, "utf8")).toContain(
+        'const eventsDir = "/home/user/.codepulse/events";',
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("writes hook script with supportPath events directory by default", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "codepulse-hooks-"));
+
+    try {
+      const scriptPath = await getWriteHookScript()(root);
+
+      expect(await readFile(scriptPath, "utf8")).toContain(
+        JSON.stringify(path.join(root, "events")),
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

@@ -5,7 +5,7 @@ import {
   parseMonitorProjectPrefixes,
   projectNameFromCwd,
 } from "./paths";
-import { scanSessions } from "./scanners";
+import { scanSessions, type ScanRoots } from "./scanners";
 import { toPositiveInt } from "./time";
 import type {
   HookEvent,
@@ -32,6 +32,14 @@ export function eventsPath(supportPath: string): string {
   return path.join(supportPath, "events");
 }
 
+export interface StateBuildConfig {
+  stateRoot: string;
+  eventRoot?: string;
+  scanRoots?: Partial<ScanRoots>;
+  preferences: Preferences;
+  now?: number;
+}
+
 export async function loadSnapshot(
   supportPath: string,
 ): Promise<StateSnapshot | undefined> {
@@ -56,14 +64,13 @@ export async function saveSnapshot(
 }
 
 async function loadHookEvents(
-  supportPath: string,
+  eventRoot: string,
   activeWindowMs: number,
   now: number,
 ): Promise<HookEvent[]> {
-  const dir = eventsPath(supportPath);
   let files: string[];
   try {
-    files = await readdir(dir);
+    files = await readdir(eventRoot);
   } catch {
     return [];
   }
@@ -72,7 +79,7 @@ async function loadHookEvents(
     files
       .filter((file) => file.endsWith(".json"))
       .map(async (file) => {
-        const filePath = path.join(dir, file);
+        const filePath = path.join(eventRoot, file);
         const fileStat = await stat(filePath);
         if (now - fileStat.mtimeMs > activeWindowMs) {
           return undefined;
@@ -411,26 +418,28 @@ export function applyDebounce(
   });
 }
 
-export async function buildState(
-  supportPath: string,
-  preferences: Preferences,
-): Promise<{
+export async function buildStateFromConfig(config: StateBuildConfig): Promise<{
   previous?: StateSnapshot;
   snapshot: StateSnapshot;
 }> {
-  const previous = await loadSnapshot(supportPath);
-  const now = Date.now();
+  const previous = await loadSnapshot(config.stateRoot);
+  const now = config.now ?? Date.now();
   const activeWindowMs =
-    toPositiveInt(preferences.activeWindowMinutes, 5) * 60 * 1000;
+    toPositiveInt(config.preferences.activeWindowMinutes, 5) * 60 * 1000;
   const monitorPrefixes = parseMonitorProjectPrefixes(
-    preferences.monitorProjects,
+    config.preferences.monitorProjects,
   );
   const passiveSessions = await scanSessions({
     activeWindowMs,
     monitorPrefixes,
     now,
+    roots: config.scanRoots,
   });
-  const hookEvents = await loadHookEvents(supportPath, activeWindowMs, now);
+  const hookEvents = await loadHookEvents(
+    config.eventRoot ?? eventsPath(config.stateRoot),
+    activeWindowMs,
+    now,
+  );
   const merged = mergeHookEvents(
     passiveSessions,
     hookEvents,
@@ -444,7 +453,21 @@ export async function buildState(
     counts: statusCounts(sessions),
   };
 
-  await saveSnapshot(supportPath, snapshot);
+  await saveSnapshot(config.stateRoot, snapshot);
 
   return { previous, snapshot };
+}
+
+export async function buildState(
+  supportPath: string,
+  preferences: Preferences,
+): Promise<{
+  previous?: StateSnapshot;
+  snapshot: StateSnapshot;
+}> {
+  return buildStateFromConfig({
+    stateRoot: supportPath,
+    eventRoot: eventsPath(supportPath),
+    preferences,
+  });
 }

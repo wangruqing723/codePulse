@@ -31,6 +31,15 @@ export function parseMonitorProjectPrefixes(raw: string | undefined): string[] {
     .filter(Boolean);
 }
 
+function normalizeForBoundaryMatch(value: string): string {
+  const normalized = value.replaceAll("\\", "/");
+  if (normalized === "/") {
+    return normalized;
+  }
+
+  return normalized.replace(/\/+$/, "");
+}
+
 export function matchesMonitorPrefixes(
   cwd: string | undefined,
   prefixes: string[],
@@ -43,7 +52,13 @@ export function matchesMonitorPrefixes(
     return false;
   }
 
-  return prefixes.some(
-    (prefix) => cwd === prefix || cwd.startsWith(`${prefix}${path.sep}`),
-  );
+  const normalizedCwd = normalizeForBoundaryMatch(cwd);
+
+  return prefixes.some((prefix) => {
+    const normalizedPrefix = normalizeForBoundaryMatch(prefix);
+    return (
+      normalizedCwd === normalizedPrefix ||
+      normalizedCwd.startsWith(`${normalizedPrefix}/`)
+    );
+  });
 }
