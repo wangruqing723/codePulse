@@ -43,6 +43,11 @@ vi.mock("../lib/state", () => ({
   buildStateFromConfig: vi.fn(),
 }));
 
+vi.mock("../lib/companion-preferences", () => ({
+  companionPreferencesRoot: vi.fn(() => "/Users/me/.codepulse"),
+  resolveCompanionPreferences: vi.fn(),
+}));
+
 vi.mock("../lib/wsl", () => ({
   resolveDefaultWslContext: vi.fn(),
 }));
@@ -366,5 +371,66 @@ describe("companion main window display flow", () => {
       dockedEdge: "right",
       hidden: false,
     });
+  });
+
+  it("resolves companion preferences before refreshing state", async () => {
+    const mainModule = await import("./main");
+    const { resolveCompanionPreferences } =
+      await import("../lib/companion-preferences");
+    const { buildStateFromConfig } = await import("../lib/state");
+    const { resolveCompanionStateSource } = await import("./state-source");
+    const { buildFloatingViewModel } = await import("./view-model");
+
+    vi.mocked(resolveCompanionPreferences).mockResolvedValue({
+      activeWindowMinutes: "30",
+      monitorProjects: "/Users/me/project",
+    });
+    vi.mocked(resolveCompanionStateSource).mockResolvedValue({
+      kind: "available",
+      platform: "darwin",
+      stateConfig: {
+        stateRoot: "/tmp/codepulse/state",
+        preferences: {
+          activeWindowMinutes: "30",
+          monitorProjects: "/Users/me/project",
+        },
+      },
+      viewModelContext: {
+        platform: "darwin",
+      },
+    });
+    vi.mocked(buildStateFromConfig).mockResolvedValue({
+      snapshot: {
+        generatedAt: "2026-07-04T00:00:00.000Z",
+        sessions: [],
+        counts: {
+          done: 0,
+          error: 0,
+          idle: 0,
+          running: 0,
+          waiting: 0,
+        },
+      },
+    });
+
+    mainModule.__testing__.resetState();
+    await mainModule.__testing__.refreshModelOnce();
+
+    expect(resolveCompanionPreferences).toHaveBeenCalledWith(
+      "/Users/me/.codepulse",
+      {
+        activeWindowMinutes: "5",
+        monitorProjects: undefined,
+      },
+    );
+    expect(resolveCompanionStateSource).toHaveBeenCalledWith("darwin", {
+      stateRoot: "/tmp/codepulse/state",
+      preferences: {
+        activeWindowMinutes: "30",
+        monitorProjects: "/Users/me/project",
+      },
+      resolveDefaultWslContext: expect.any(Function),
+    });
+    expect(buildFloatingViewModel).toHaveBeenCalled();
   });
 });

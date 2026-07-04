@@ -1,0 +1,14 @@
+{
+  "change": "polish-floating-companion-ui",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "fda50d3654d87b9cdc53f2a6a94da88c12c21c81488793b75df84feaf724a864",
+  "files": [
+    { "path": "openspec/changes/polish-floating-companion-ui/proposal.md", "sha256": "d75496faf389dc231ac12ee97f28cbc546d288a42cc555cfc64fbe7ceafb6bc2" },
+    { "path": "openspec/changes/polish-floating-companion-ui/design.md", "sha256": "e5c9aedf3c59ac974196ca48580f96dcbdab16d5a66c5d7202492597eee9d140" },
+    { "path": "openspec/changes/polish-floating-companion-ui/tasks.md", "sha256": "a6983a15befb7185594adfdeb1e5dd2bd7cd46c266ce650ffc3a8d5140b33659" },
+    { "path": "openspec/changes/polish-floating-companion-ui/specs/wsl2-monitoring/spec.md", "sha256": "0c3c5e1a09ece69f197536d5f5de73228e78a56ca910a142fb9e9578d2661295" }
+  ]
+}

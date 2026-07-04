@@ -51,8 +51,64 @@ describe("companion renderer html", () => {
     expect(html).toContain('data-action="hide"');
     expect(html).toContain('data-action="minimize"');
     expect(html).toContain('data-action="force-exit"');
+    expect(html).toContain('aria-label="隐藏"');
+    expect(html).toContain('aria-label="最小化"');
+    expect(html).toContain('aria-label="强制退出"');
     expect(html).toContain("修复 companion");
     expect(html).toContain("复制路径");
+  });
+
+  it("renders compact icon-only window actions", async () => {
+    const { renderFloatingHtml } = await loadRendererModule();
+
+    const html = renderFloatingHtml?.(createModel({}));
+
+    expect(html).toContain("window-icon window-icon-hide");
+    expect(html).toContain("window-icon window-icon-minimize");
+    expect(html).toContain("window-icon window-icon-force-exit");
+    expect(html).not.toContain('data-action="hide">隐藏</button>');
+    expect(html).not.toContain('data-action="minimize">最小化</button>');
+    expect(html).not.toContain('data-action="force-exit">强制退出</button>');
+  });
+
+  it("handles clicks on nested window action icons", async () => {
+    const { bindInteractions } = await loadRendererModule();
+    const listeners = new Map<string, (event: { target: unknown }) => void>();
+    const requestWindowAction = vi.fn();
+    class FakeElement {
+      constructor(
+        public dataset: Record<string, string | undefined> = {},
+        private closestElement?: FakeElement,
+      ) {}
+
+      closest(): FakeElement | undefined {
+        return this.closestElement;
+      }
+    }
+    const root = {
+      addEventListener: vi.fn(
+        (event: string, listener: (event: { target: unknown }) => void) => {
+          listeners.set(event, listener);
+        },
+      ),
+    };
+    const button = new FakeElement({ action: "hide" });
+    const icon = new FakeElement({}, button);
+
+    vi.stubGlobal("HTMLElement", FakeElement);
+    bindInteractions?.(
+      root as never,
+      {
+        copyText: vi.fn(),
+        getState: vi.fn(),
+        requestWindowAction,
+        subscribe: vi.fn(),
+      } as never,
+    );
+    listeners.get("click")?.({ target: icon });
+
+    expect(requestWindowAction.mock.calls).toEqual([["hide"]]);
+    vi.unstubAllGlobals();
   });
 
   it("uses a narrow drag handle instead of making the whole header draggable", async () => {

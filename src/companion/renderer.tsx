@@ -17,6 +17,15 @@ const initialModel: FloatingViewModel = {
   sessions: [],
 };
 const HOVER_LEAVE_DELAY_MS = 260;
+const WINDOW_ACTIONS = [
+  { action: "hide", label: "隐藏", iconClass: "window-icon-hide" },
+  { action: "minimize", label: "最小化", iconClass: "window-icon-minimize" },
+  {
+    action: "force-exit",
+    label: "强制退出",
+    iconClass: "window-icon-force-exit",
+  },
+] as const;
 
 function escapeHtml(value: string): string {
   return value
@@ -87,6 +96,22 @@ function renderSessions(model: FloatingViewModel): string {
   `;
 }
 
+function renderWindowActions(): string {
+  return WINDOW_ACTIONS.map(
+    ({ action, label, iconClass }) => `
+      <button
+        type="button"
+        class="window-button"
+        data-action="${action}"
+        aria-label="${label}"
+        title="${label}"
+      >
+        <span class="window-icon ${iconClass}" aria-hidden="true"></span>
+      </button>
+    `,
+  ).join("");
+}
+
 export function renderFloatingHtml(model: FloatingViewModel): string {
   return `
     <section class="shell" data-status="${escapeHtml(model.status)}">
@@ -99,9 +124,7 @@ export function renderFloatingHtml(model: FloatingViewModel): string {
           <div class="drag-handle drag-region" aria-hidden="true"></div>
         </div>
         <div class="window-actions no-drag">
-          <button type="button" class="window-button" data-action="hide">隐藏</button>
-          <button type="button" class="window-button" data-action="minimize">最小化</button>
-          <button type="button" class="window-button" data-action="force-exit">强制退出</button>
+          ${renderWindowActions()}
         </div>
       </header>
       ${renderSessions(model)}
@@ -160,7 +183,10 @@ export function createHoverIntentController(
   };
 }
 
-function bindInteractions(root: HTMLElement, bridge: CompanionBridge): void {
+export function bindInteractions(
+  root: HTMLElement,
+  bridge: CompanionBridge,
+): void {
   const hoverIntent = createHoverIntentController(bridge);
 
   root.addEventListener("mouseenter", () => {
@@ -175,13 +201,15 @@ function bindInteractions(root: HTMLElement, bridge: CompanionBridge): void {
       return;
     }
 
-    const action = target.dataset.action;
+    const actionTarget = target.closest<HTMLElement>("[data-action]");
+    const action = actionTarget?.dataset.action;
     if (action === "force-exit" || action === "hide" || action === "minimize") {
       hoverIntent.onWindowAction(action);
       return;
     }
 
-    const value = target.dataset.copyValue;
+    const copyTarget = target.closest<HTMLElement>("[data-copy-value]");
+    const value = copyTarget?.dataset.copyValue;
     if (value) {
       await bridge.copyText(value);
     }

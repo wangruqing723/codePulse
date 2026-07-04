@@ -7,10 +7,15 @@ import {
   Toast,
   confirmAlert,
   environment,
+  getPreferenceValues,
   showToast,
 } from "@raycast/api";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { killCompanionProcess } from "./companion/process-control";
+import {
+  companionPreferencesRoot,
+  saveCompanionPreferencesSnapshot,
+} from "./lib/companion-preferences";
 import {
   getHookInstallStatus,
   installHooks,
@@ -18,6 +23,7 @@ import {
   type HookInstallStatus,
   type HookTarget,
 } from "./lib/hooks";
+import type { Preferences } from "./lib/types";
 
 type SetupTarget = Exclude<HookTarget, "all">;
 
@@ -55,17 +61,22 @@ function targetInstalled(
 }
 
 export default function Command() {
+  const preferences = useMemo(() => getPreferenceValues<Preferences>(), []);
   const [status, setStatus] = useState<HookInstallStatus>();
   const [isLoading, setIsLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
     try {
+      await saveCompanionPreferencesSnapshot(
+        companionPreferencesRoot(),
+        preferences,
+      );
       setStatus(await getHookInstallStatus(environment.supportPath));
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [preferences]);
 
   const forceExitCompanion = useCallback(async () => {
     const shouldKill = await confirmAlert({

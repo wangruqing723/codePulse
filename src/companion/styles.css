@@ -41,10 +41,10 @@ select {
 }
 
 .header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
 }
 
 .header-main {
@@ -79,16 +79,17 @@ select {
 
 .status-text {
   margin: 0;
-  font-size: 22px;
-  line-height: 1.1;
+  font-size: 20px;
+  line-height: 1.15;
   font-weight: 700;
+  overflow: hidden;
   text-wrap: balance;
 }
 
 .drag-handle {
-  flex: 0 0 44px;
-  height: 28px;
-  border-radius: 8px;
+  flex: 0 0 34px;
+  height: 26px;
+  border-radius: 7px;
   background: linear-gradient(
     90deg,
     rgba(148, 163, 184, 0.22) 0 22%,
@@ -102,17 +103,21 @@ select {
 
 .window-actions {
   display: flex;
-  gap: 8px;
-  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
 }
 
 .window-button {
   box-sizing: border-box;
-  min-width: 54px;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  min-width: 28px;
   height: 28px;
-  padding: 0 9px;
+  padding: 0;
   border: 1px solid rgba(148, 163, 184, 0.28);
-  border-radius: 8px;
+  border-radius: 999px;
   background: rgba(15, 23, 42, 0.72);
   color: #e2e8f0;
   cursor: pointer;
@@ -121,6 +126,73 @@ select {
 .window-button:hover,
 .copy-action:hover {
   border-color: rgba(96, 165, 250, 0.72);
+}
+
+.window-button:focus-visible,
+.copy-action:focus-visible {
+  outline: 2px solid rgba(96, 165, 250, 0.9);
+  outline-offset: 2px;
+}
+
+.window-button[data-action="force-exit"]:hover {
+  border-color: rgba(248, 113, 113, 0.82);
+  color: #fecaca;
+}
+
+.window-icon {
+  position: relative;
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+.window-icon::before,
+.window-icon::after {
+  position: absolute;
+  content: "";
+  box-sizing: border-box;
+}
+
+.window-icon-hide::before {
+  inset: 3px 1px;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+}
+
+.window-icon-hide::after {
+  top: 6px;
+  left: 1px;
+  width: 12px;
+  height: 1.5px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: rotate(-32deg);
+  transform-origin: center;
+}
+
+.window-icon-minimize::before {
+  left: 2px;
+  right: 2px;
+  bottom: 3px;
+  height: 1.8px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.window-icon-force-exit::before {
+  top: 1px;
+  left: 6px;
+  width: 2px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.window-icon-force-exit::after {
+  inset: 3px 2px 1px;
+  border: 1.7px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 999px;
 }
 
 .session-list {

@@ -28,6 +28,10 @@ import {
   killCompanionProcess,
   registerCompanionProcess,
 } from "./process-control";
+import {
+  companionPreferencesRoot,
+  resolveCompanionPreferences,
+} from "../lib/companion-preferences";
 
 const REFRESH_INTERVAL_MS = 5_000;
 const WINDOW_WIDTH = 340;
@@ -338,9 +342,13 @@ async function resolveCachedWsl(): Promise<WslContext> {
 
 async function refreshModel(): Promise<void> {
   const platform = platformForHost();
+  const preferences = await resolveCompanionPreferences(
+    companionPreferencesRoot(),
+    DEFAULT_PREFERENCES,
+  );
   const source = await resolveCompanionStateSource(platform, {
     stateRoot: stateRoot(),
-    preferences: DEFAULT_PREFERENCES,
+    preferences,
     resolveDefaultWslContext: resolveCachedWsl,
   });
 
@@ -519,6 +527,7 @@ export const __testing__ = {
     runtimeWindowState,
   handleWindowAction,
   registerIpcHandlers,
+  refreshModelOnce,
   resolveInitialWindowState,
   resetState: (): void => {
     mainWindow = undefined;

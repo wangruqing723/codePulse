@@ -19,6 +19,10 @@ import {
 } from "./lib/hooks";
 import { focusTerminalSession } from "./lib/terminal";
 import { notifyTransitions } from "./lib/notifications";
+import {
+  companionPreferencesRoot,
+  saveCompanionPreferencesSnapshot,
+} from "./lib/companion-preferences";
 import { itemSubtitle } from "./lib/session-labels";
 import { buildState } from "./lib/state";
 import { showToastIfAvailable } from "./lib/toast";
@@ -163,6 +167,10 @@ export default function Command() {
         setIsLoading(true);
       }
       try {
+        await saveCompanionPreferencesSnapshot(
+          companionPreferencesRoot(),
+          preferences,
+        );
         const result = await buildState(environment.supportPath, preferences);
         const nextHookStatus = await getHookInstallStatus(
           environment.supportPath,
