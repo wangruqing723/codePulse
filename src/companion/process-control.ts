@@ -167,6 +167,41 @@ function collectTree(
   return matched;
 }
 
+function findProcess(
+  processes: ProcessSnapshot[],
+  pid: number | undefined,
+): ProcessSnapshot | undefined {
+  if (pid === undefined) {
+    return undefined;
+  }
+
+  return processes.find((processInfo) => processInfo.pid === pid);
+}
+
+async function hasMatchingProcess(record: CompanionProcessRecord): Promise<boolean> {
+  if (deps.platform === "win32") {
+    try {
+      deps.kill(record.pid, 0);
+      return true;
+    } catch (error) {
+      if (isMissingProcessError(error)) {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  const processes = await listProcesses();
+  const recordedProcess = findProcess(processes, record.pid);
+  if (recordedProcess && commandMatchesRecord(recordedProcess.command, record)) {
+    return true;
+  }
+
+  return processes.some((processInfo) =>
+    commandMatchesRecord(processInfo.command, record),
+  );
+}
+
 async function resolveMatchedProcesses(
   record: CompanionProcessRecord,
 ): Promise<ProcessSnapshot[]> {
@@ -178,11 +213,15 @@ async function resolveMatchedProcesses(
   }
 
   const processes = await listProcesses();
-  const exactRootPids = [record.launcherPid, record.pid].filter(
-    (value): value is number =>
-      typeof value === "number" &&
-      processes.some((processInfo) => processInfo.pid === value),
-  );
+  const launcherProcess = findProcess(processes, record.launcherPid);
+  const recordedProcess = findProcess(processes, record.pid);
+  const exactRootPids = [launcherProcess, recordedProcess]
+    .filter(
+      (processInfo): processInfo is ProcessSnapshot =>
+        processInfo !== undefined &&
+        commandMatchesRecord(processInfo.command, record),
+    )
+    .map((processInfo) => processInfo.pid);
 
   if (exactRootPids.length > 0) {
     return collectTree(processes, exactRootPids);
@@ -198,7 +237,17 @@ async function resolveMatchedProcesses(
 export async function readCompanionProcessRecord(): Promise<
   CompanionProcessRecord | undefined
 > {
-  return readStoredRecord();
+  const record = await readStoredRecord();
+  if (!record) {
+    return undefined;
+  }
+
+  if (await hasMatchingProcess(record)) {
+    return record;
+  }
+
+  await clearCompanionProcessRecord();
+  return undefined;
 }
 
 export async function registerCompanionProcess(
