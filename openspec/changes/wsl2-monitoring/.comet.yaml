@@ -7,13 +7,13 @@ subagent_dispatch: null
 tdd_mode: tdd
 review_mode: thorough
 isolation: branch
-verify_mode: null
+verify_mode: full
 auto_transition: true
 base_ref: 9d9fe2904367ae25730ba1aa5dc1ac474a9b3607
 design_doc: docs/superpowers/specs/2026-07-03-wsl2-monitoring-design.md
 plan: docs/superpowers/plans/2026-07-03-wsl2-monitoring.md
 verify_result: pending
-verification_report: null
+verification_report: docs/superpowers/reports/2026-07-04-wsl2-monitoring-verify.md
 branch_status: pending
 created_at: 2026-07-03
 verified_at: null
