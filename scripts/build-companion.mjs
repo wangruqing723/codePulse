@@ -32,6 +32,18 @@ async function buildPreload() {
   });
 }
 
+async function buildKill() {
+  await build({
+    entryPoints: [path.join(rootDir, "src/companion/kill.ts")],
+    bundle: true,
+    outfile: path.join(outDir, "kill.cjs"),
+    format: "cjs",
+    platform: "node",
+    target: "node22",
+    sourcemap: true,
+  });
+}
+
 async function buildRenderer() {
   await build({
     entryPoints: [path.join(rootDir, "src/companion/renderer.tsx")],
@@ -88,6 +100,7 @@ async function main() {
 
   await Promise.all([
     buildMain(),
+    buildKill(),
     buildPreload(),
     buildRenderer(),
     buildStyles(),

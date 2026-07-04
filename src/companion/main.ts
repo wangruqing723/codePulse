@@ -24,6 +24,7 @@ import {
   type CompanionPlatform,
   type FloatingViewModel,
 } from "./view-model";
+import { registerCompanionProcess } from "./process-control";
 
 const REFRESH_INTERVAL_MS = 5_000;
 const WINDOW_WIDTH = 340;
@@ -522,6 +523,7 @@ function startRefreshTimer(): void {
 }
 
 interface StartupHooks {
+  registerProcess: () => Promise<void>;
   registerIpcHandlers: () => void;
   createMainWindow: () => Promise<BrowserWindow | void>;
   refreshModelOnce: () => Promise<void>;
@@ -529,11 +531,13 @@ interface StartupHooks {
 }
 
 export async function initializeCompanionStartup({
+  registerProcess,
   registerIpcHandlers,
   createMainWindow,
   refreshModelOnce,
   startRefreshTimer,
 }: StartupHooks): Promise<void> {
+  await registerProcess();
   registerIpcHandlers();
   await createMainWindow();
   await refreshModelOnce();
@@ -543,6 +547,17 @@ export async function initializeCompanionStartup({
 async function start(): Promise<void> {
   app.setName("CodePulse Companion");
   await initializeCompanionStartup({
+    registerProcess: async () => {
+      await registerCompanionProcess({
+        pid: process.pid,
+        launcherPid: process.ppid,
+        startedAt: new Date().toISOString(),
+        platform: process.platform,
+        mode: app.isPackaged ? "packaged" : "dev",
+        execPath: process.execPath,
+        argv: process.argv.slice(1),
+      });
+    },
     registerIpcHandlers,
     createMainWindow: async () => {
       mainWindow = await createMainWindow();

@@ -79,6 +79,7 @@
     "build": "ray build -e dist",
     "companion:build": "node scripts/build-companion.mjs",
     "companion:dev": "node scripts/run-companion-dev.mjs",
+    "companion:kill": "npm run companion:build && node dist-companion/kill.cjs",
     "companion:package": "npm run companion:build && electron-builder --config electron-builder.yml",
     "lint": "ray lint",
     "fix-lint": "ray lint --fix",

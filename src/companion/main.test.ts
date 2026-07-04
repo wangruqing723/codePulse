@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const electronMocks = vi.hoisted(() => ({
   app: {
     getPath: vi.fn(() => "/tmp/codepulse"),
+    isPackaged: false,
     on: vi.fn(),
     quit: vi.fn(),
     setName: vi.fn(),
@@ -59,9 +60,18 @@ vi.mock("./view-model", () => ({
   })),
 }));
 
+const processControlMocks = vi.hoisted(() => ({
+  registerCompanionProcess: vi.fn(),
+}));
+
+vi.mock("./process-control", () => ({
+  registerCompanionProcess: processControlMocks.registerCompanionProcess,
+}));
+
 describe("companion main window display flow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    processControlMocks.registerCompanionProcess.mockResolvedValue(undefined);
   });
 
   it("registers ipc handlers before creating the window", async () => {
@@ -69,6 +79,9 @@ describe("companion main window display flow", () => {
     const order: string[] = [];
 
     await mainModule.initializeCompanionStartup?.({
+      registerProcess: async () => {
+        order.push("register-process");
+      },
       registerIpcHandlers: () => {
         order.push("register-ipc");
       },
@@ -84,6 +97,7 @@ describe("companion main window display flow", () => {
     });
 
     expect(order).toEqual([
+      "register-process",
       "register-ipc",
       "create-window",
       "refresh",
