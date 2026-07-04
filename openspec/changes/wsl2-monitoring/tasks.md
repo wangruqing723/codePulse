@@ -11,7 +11,7 @@
 - [x] 2.3 支持从 WSL-local CodePulse events 目录读取 hook/notify 事件
 - [x] 2.4 保持 macOS Raycast 默认扫描本机 home 与 supportPath events
 - [x] 2.5 为 WSL transcript 扫描、WSL event 合并和 macOS 默认路径兼容补充测试
-- [ ] 2.6 修复 Codex CLI 存在 subagent 时菜单栏 `运行中` 状态被错误重置的问题
+- [x] 2.6 修复 Codex CLI 存在 subagent 时菜单栏 `运行中` 状态被错误重置的问题
 - [ ] 2.7 修复 Claude Code 出错后菜单栏错误态残留、直到新一轮对话才恢复正常状态的问题
 
 ## 3. 跨平台 Electron 悬浮窗 companion

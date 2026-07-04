@@ -413,15 +413,32 @@ function sessionFreshnessMs(session: SessionRecord): number {
   );
 }
 
+function shouldReplaceDuplicateSession(
+  previous: SessionRecord,
+  candidate: SessionRecord,
+): boolean {
+  if (previous.agent === "codex" && candidate.agent === "codex") {
+    const previousStartedAt = timestampMs(previous.runningSince);
+    const candidateStartedAt = timestampMs(candidate.runningSince);
+
+    if (
+      previousStartedAt > 0 &&
+      candidateStartedAt > 0 &&
+      previousStartedAt !== candidateStartedAt
+    ) {
+      return candidateStartedAt < previousStartedAt;
+    }
+  }
+
+  return sessionFreshnessMs(candidate) > sessionFreshnessMs(previous);
+}
+
 export function dedupeSessionsById(sessions: SessionRecord[]): SessionRecord[] {
   const byId = new Map<string, SessionRecord>();
 
   for (const session of sessions) {
     const previous = byId.get(session.id);
-    if (
-      !previous ||
-      sessionFreshnessMs(session) > sessionFreshnessMs(previous)
-    ) {
+    if (!previous || shouldReplaceDuplicateSession(previous, session)) {
       byId.set(session.id, session);
     }
   }

@@ -423,6 +423,31 @@ describe("session de-duplication", () => {
       dedupeSessionsById([staleShortTranscript, freshFullTranscript]),
     ).toEqual([freshFullTranscript]);
   });
+
+  it("does not let a newer Codex subagent transcript replace a running parent session", () => {
+    const parentSession = session({
+      id: "codex:shared-session",
+      status: "running",
+      updatedAt: "2026-07-01T14:11:00.000Z",
+      runningSince: "2026-07-01T14:06:34.643Z",
+      completedAt: undefined,
+      transcriptPath: "/tmp/parent.jsonl",
+    });
+    const subagentSession = session({
+      id: "codex:shared-session",
+      status: "done",
+      updatedAt: "2026-07-01T14:12:00.000Z",
+      runningSince: "2026-07-01T14:11:40.000Z",
+      transcriptPath: "/tmp/subagent.jsonl",
+    });
+
+    expect(dedupeSessionsById([parentSession, subagentSession])).toEqual([
+      parentSession,
+    ]);
+    expect(dedupeSessionsById([subagentSession, parentSession])).toEqual([
+      parentSession,
+    ]);
+  });
 });
 
 describe("configurable scan roots", () => {
