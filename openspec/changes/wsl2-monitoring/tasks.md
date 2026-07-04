@@ -35,9 +35,9 @@
 
 - [x] 5.1 添加基础 Electron companion 打包配置和命令
 - [x] 5.2 记录 companion 开发运行、打包运行、macOS 保持兼容和 Windows WSL2 前置条件
-- [ ] 5.3 运行 lint、build、test，并手动验证 macOS 现有 Raycast 入口不回退
+- [x] 5.3 运行 lint、build、test，并手动验证 macOS 现有 Raycast 入口不回退
 - [ ] 5.4 在 Windows + 默认 WSL2 环境中验证悬浮窗状态、贴边隐藏、会话列表和双路径复制
-- [ ] 5.5 在 macOS 环境中验证悬浮窗状态、贴边隐藏和本机路径复制
+- [x] 5.5 在 macOS 环境中验证悬浮窗状态、贴边隐藏和本机路径复制
 
 ## 6. Companion 恢复与控制台入口
 
@@ -45,4 +45,4 @@
 - [x] 6.2 让 dev / packaged companion 启动时写入进程记录，并新增 `npm run companion:kill` 作为命令行恢复入口
 - [x] 6.3 将 Raycast `Setup CodePulse Hooks` 展示名调整为 `CodePulse Center`，定位为“配置 + 恢复控制台”，保持 `setup-hooks` slug 和原有 hook 安装逻辑不变
 - [x] 6.4 在 floating companion 内增加 `强制退出` 恢复动作，并通过 IPC 复用统一 kill 逻辑
-- [ ] 6.5 在 macOS 环境验证 CLI kill、Raycast 恢复和 companion 内强制退出可清理卡死窗口；Windows + WSL2 验证暂记待补
+- [x] 6.5 在 macOS 环境验证 CLI kill、Raycast 恢复和 companion 内强制退出可清理卡死窗口；Windows + WSL2 验证暂记待补
