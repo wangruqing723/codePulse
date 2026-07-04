@@ -2,6 +2,7 @@
 change: wsl2-monitoring
 design-doc: docs/superpowers/specs/2026-07-03-wsl2-monitoring-design.md
 base-ref: 9d9fe2904367ae25730ba1aa5dc1ac474a9b3607
+archived-with: 2026-07-04-wsl2-monitoring
 ---
 
 # WSL2 Monitoring Floating Companion Implementation Plan
@@ -30,6 +31,7 @@ base-ref: 9d9fe2904367ae25730ba1aa5dc1ac474a9b3607
 - macOS Raycast menu-bar, Setup Hooks, supportPath events, local transcript scanning, notifications, and iTerm2 action must remain compatible.
 - Do not run `git commit` until the user explicitly confirms commit permission.
 
+archived-with: 2026-07-04-wsl2-monitoring
 ---
 
 ## File Structure

@@ -2,6 +2,8 @@
 comet_change: wsl2-monitoring
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-07-04-wsl2-monitoring
+status: final
 ---
 
 # CodePulse 跨平台悬浮窗 + WSL2 监控设计

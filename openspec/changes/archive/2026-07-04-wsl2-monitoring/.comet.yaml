@@ -17,6 +17,6 @@ verification_report: docs/superpowers/reports/2026-07-04-wsl2-monitoring-verify.
 branch_status: handled
 created_at: 2026-07-03
 verified_at: 2026-07-04
-archived: false
+archived: true
 handoff_context: openspec/changes/wsl2-monitoring/.comet/handoff/design-context.json
 handoff_hash: b1b65a3c6127eb2cb1e967493dc2772254494b52246d7061ebbc2c1e1ac21c67
