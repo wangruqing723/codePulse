@@ -54,6 +54,7 @@ interface RuntimeWindowState {
 
 type WindowAction = "hide" | "hover-enter" | "hover-leave" | "minimize";
 type ReadyToShowWindow = Pick<BrowserWindow, "loadFile" | "once" | "show">;
+type LifecycleWindow = Pick<BrowserWindow, "on">;
 
 let mainWindow: BrowserWindow | undefined;
 let refreshTimer: NodeJS.Timeout | undefined;
@@ -67,6 +68,16 @@ let refreshInFlight: Promise<void> | undefined;
 let runtimeWindowState: RuntimeWindowState | undefined;
 let cachedWslContext: WslContext | undefined;
 let resolvingWslContext: Promise<WslContext> | undefined;
+
+function clearMoveTimer(): void {
+  clearTimeout(moveTimer);
+  moveTimer = undefined;
+}
+
+function clearHideTimer(): void {
+  clearTimeout(hideTimer);
+  hideTimer = undefined;
+}
 
 function platformForHost(): CompanionPlatform {
   return process.platform === "win32" ? "win32" : "darwin";
@@ -204,7 +215,7 @@ function dockToEdge(edge: DockEdge, hidden: boolean): void {
 }
 
 function revealDockedWindow(): void {
-  clearTimeout(hideTimer);
+  clearHideTimer();
   if (
     !mainWindow ||
     !runtimeWindowState?.dockedEdge ||
@@ -231,13 +242,41 @@ function revealDockedWindow(): void {
 }
 
 function hideDockedWindow(): void {
-  clearTimeout(hideTimer);
+  clearHideTimer();
   if (!runtimeWindowState?.dockedEdge) {
     dockToEdge("right", true);
     return;
   }
 
   dockToEdge(runtimeWindowState.dockedEdge, true);
+}
+
+function prepareForWindowMinimize(): void {
+  clearHideTimer();
+  clearMoveTimer();
+}
+
+function restoreDockedWindow(): void {
+  clearHideTimer();
+  clearMoveTimer();
+  if (!mainWindow || !runtimeWindowState?.dockedEdge) {
+    return;
+  }
+
+  const workArea = currentWorkArea(runtimeWindowState.fullBounds);
+  const fullBounds = dockWindow(
+    runtimeWindowState.fullBounds,
+    workArea,
+    runtimeWindowState.dockedEdge,
+  );
+
+  runtimeWindowState = {
+    ...runtimeWindowState,
+    fullBounds,
+    hidden: false,
+  };
+  applyWindowBounds(fullBounds);
+  void persistWindowStateSoon();
 }
 
 function publishModel(model: FloatingViewModel): void {
@@ -309,13 +348,13 @@ function scheduleMoveEvaluation(): void {
     return;
   }
 
-  clearTimeout(hideTimer);
+  clearHideTimer();
 
   if (Date.now() < suppressMoveEventsUntil) {
     return;
   }
 
-  clearTimeout(moveTimer);
+  clearMoveTimer();
   moveTimer = setTimeout(() => {
     if (!mainWindow) {
       return;
@@ -338,7 +377,7 @@ function scheduleMoveEvaluation(): void {
 }
 
 function scheduleDockedHide(): void {
-  clearTimeout(hideTimer);
+  clearHideTimer();
   hideTimer = setTimeout(() => {
     hideTimer = undefined;
     if (runtimeWindowState?.dockedEdge) {
@@ -361,9 +400,21 @@ function handleWindowAction(action: WindowAction): void {
       }
       break;
     case "minimize":
+      prepareForWindowMinimize();
       mainWindow?.minimize();
       break;
   }
+}
+
+function attachWindowLifecycleHandlers(window: LifecycleWindow): void {
+  window.on("move", scheduleMoveEvaluation);
+  window.on("minimize", prepareForWindowMinimize);
+  window.on("restore", restoreDockedWindow);
+  window.on("closed", () => {
+    mainWindow = undefined;
+    clearMoveTimer();
+    clearHideTimer();
+  });
 }
 
 export async function loadWindowContentAndShow(
@@ -423,15 +474,33 @@ async function createMainWindow(): Promise<BrowserWindow> {
       }
     },
   );
-  window.on("move", scheduleMoveEvaluation);
-  window.on("closed", () => {
-    mainWindow = undefined;
-    clearTimeout(moveTimer);
-    clearTimeout(hideTimer);
-  });
+  attachWindowLifecycleHandlers(window);
 
   return window;
 }
+
+export const __testing__ = {
+  attachWindowLifecycleHandlers,
+  getRuntimeWindowState: (): RuntimeWindowState | undefined => runtimeWindowState,
+  handleWindowAction,
+  resetState: (): void => {
+    mainWindow = undefined;
+    refreshTimer = undefined;
+    clearMoveTimer();
+    clearHideTimer();
+    suppressMoveEventsUntil = 0;
+    runtimeWindowState = undefined;
+    refreshInFlight = undefined;
+    cachedWslContext = undefined;
+    resolvingWslContext = undefined;
+  },
+  setMainWindow: (window: BrowserWindow | undefined): void => {
+    mainWindow = window;
+  },
+  setRuntimeWindowState: (state: RuntimeWindowState | undefined): void => {
+    runtimeWindowState = state;
+  },
+};
 
 function registerIpcHandlers(): void {
   ipcMain.handle("companion:get-state", () => currentModel);
@@ -490,11 +559,11 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
   clearInterval(refreshTimer);
-  clearTimeout(hideTimer);
+  clearHideTimer();
   app.quit();
 });
 
 app.on("before-quit", () => {
   clearInterval(refreshTimer);
-  clearTimeout(hideTimer);
+  clearHideTimer();
 });

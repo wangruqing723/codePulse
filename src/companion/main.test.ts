@@ -167,4 +167,116 @@ describe("companion main window display flow", () => {
       "after-show",
     ]);
   });
+
+  it("binds minimize and restore lifecycle handlers for docked window state recovery", async () => {
+    const mainModule = await import("./main");
+    const listeners = new Map<string, () => void>();
+
+    const fakeWindow = {
+      on: vi.fn((event: string, listener: () => void) => {
+        listeners.set(event, listener);
+        return fakeWindow;
+      }),
+    };
+
+    mainModule.__testing__.attachWindowLifecycleHandlers(fakeWindow as never);
+
+    expect(fakeWindow.on).toHaveBeenCalledWith("move", expect.any(Function));
+    expect(fakeWindow.on).toHaveBeenCalledWith(
+      "minimize",
+      expect.any(Function),
+    );
+    expect(fakeWindow.on).toHaveBeenCalledWith("restore", expect.any(Function));
+    expect(fakeWindow.on).toHaveBeenCalledWith("closed", expect.any(Function));
+    expect(listeners.get("minimize")).toBeTypeOf("function");
+    expect(listeners.get("restore")).toBeTypeOf("function");
+  });
+
+  it("cancels pending dock hide when minimizing a revealed docked window", async () => {
+    vi.useFakeTimers();
+    const mainModule = await import("./main");
+    const fakeWindow = {
+      getBounds: vi.fn(() => ({
+        x: 1100,
+        y: 200,
+        width: 340,
+        height: 360,
+      })),
+      setBounds: vi.fn(),
+      minimize: vi.fn(),
+    };
+
+    mainModule.__testing__.resetState();
+    mainModule.__testing__.setMainWindow(fakeWindow as never);
+    mainModule.__testing__.setRuntimeWindowState({
+      fullBounds: {
+        x: 1100,
+        y: 200,
+        width: 340,
+        height: 360,
+      },
+      dockedEdge: "right",
+      hidden: false,
+    });
+
+    mainModule.__testing__.handleWindowAction("hover-leave");
+    mainModule.__testing__.handleWindowAction("minimize");
+    vi.advanceTimersByTime(400);
+
+    expect(fakeWindow.minimize).toHaveBeenCalledTimes(1);
+    expect(fakeWindow.setBounds).not.toHaveBeenCalled();
+
+    vi.useRealTimers();
+  });
+
+  it("reveals a restored docked window back to its interactive full bounds", async () => {
+    const mainModule = await import("./main");
+    const listeners = new Map<string, () => void>();
+    const fakeWindow = {
+      getBounds: vi.fn(() => ({
+        x: 1412,
+        y: 200,
+        width: 340,
+        height: 360,
+      })),
+      setBounds: vi.fn(),
+      on: vi.fn((event: string, listener: () => void) => {
+        listeners.set(event, listener);
+        return fakeWindow;
+      }),
+    };
+
+    mainModule.__testing__.resetState();
+    mainModule.__testing__.setMainWindow(fakeWindow as never);
+    mainModule.__testing__.setRuntimeWindowState({
+      fullBounds: {
+        x: 1100,
+        y: 200,
+        width: 340,
+        height: 360,
+      },
+      dockedEdge: "right",
+      hidden: true,
+    });
+
+    mainModule.__testing__.attachWindowLifecycleHandlers(fakeWindow as never);
+    listeners.get("restore")?.();
+
+    expect(fakeWindow.setBounds).toHaveBeenCalledWith({
+      x: 1100,
+      y: 200,
+      width: 340,
+      height: 360,
+    });
+    expect(mainModule.__testing__.getRuntimeWindowState()).toEqual({
+      fullBounds: {
+        x: 1100,
+        y: 200,
+        width: 340,
+        height: 360,
+      },
+      dockedEdge: "right",
+      hidden: false,
+    });
+  });
 });
