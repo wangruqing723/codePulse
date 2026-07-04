@@ -31,6 +31,11 @@
 - **WHEN** 贴边悬浮窗已展开且鼠标移出窗口区域
 - **THEN** 悬浮窗再次隐藏大半部分
 
+#### Scenario: 开发模式首次启动保持可交互
+- **WHEN** 维护者第一次运行 `npm run companion:dev` 启动 floating companion
+- **THEN** 悬浮窗不会进入不可点击、不可触发 hover 的贴边隐藏状态
+- **AND** 不需要关闭终端后第二次运行命令才能恢复正常交互
+
 ### Requirement: 默认 WSL2 transcript 扫描
 系统 SHALL 使用 Windows 可访问的 WSL 路径，从用户默认 WSL2 发行版扫描 Claude Code 和 Codex CLI transcript。
 
@@ -82,6 +87,11 @@
 #### Scenario: Raycast menu-bar 继续刷新
 - **WHEN** macOS 用户继续使用现有 CodePulse Raycast menu-bar command
 - **THEN** menu-bar 仍按现有偏好和本机 transcript 文件扫描结果刷新状态
+
+#### Scenario: Codex CLI subagent 不重置父会话运行状态
+- **WHEN** Codex CLI 父会话仍在运行，且同项目下存在 Codex subagent transcript 或状态更新
+- **THEN** menu-bar 继续保留父会话的 `运行中` 状态，直到收到明确的 waiting、done、error 或父会话结束证据
+- **AND** subagent 活动不会把父会话错误重置为非运行状态
 
 #### Scenario: Raycast Setup Hooks 继续写入原位置
 - **WHEN** macOS 用户通过现有 Setup Hooks 安装或更新 hooks

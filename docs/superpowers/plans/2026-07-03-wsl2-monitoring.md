@@ -79,7 +79,7 @@ base-ref: 9d9fe2904367ae25730ba1aa5dc1ac474a9b3607
 - Produces: `ScanRoots`, `defaultScanRoots()`, `StateBuildConfig`, `buildStateFromConfig(config)`
 - Keeps: `buildState(supportPath, preferences)` behavior for Raycast.
 
-- [ ] **Step 1: Write failing WSL tests**
+- [x] **Step 1: Write failing WSL tests**
 
 Create `src/lib/wsl.test.ts` with tests for:
 
@@ -97,7 +97,7 @@ Run: `npm test -- src/lib/wsl.test.ts`
 
 Expected: FAIL because `src/lib/wsl.ts` does not exist.
 
-- [ ] **Step 2: Implement WSL helpers**
+- [x] **Step 2: Implement WSL helpers**
 
 Create `src/lib/wsl.ts` with:
 
@@ -163,7 +163,7 @@ Run: `npm test -- src/lib/wsl.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 3: Add configurable scanner and state tests**
+- [x] **Step 3: Add configurable scanner and state tests**
 
 Add tests proving:
 
@@ -181,7 +181,7 @@ npm test -- src/lib/paths.test.ts src/lib/scanners.test.ts src/lib/state.test.ts
 
 Expected: FAIL before implementation.
 
-- [ ] **Step 4: Implement configurable roots**
+- [x] **Step 4: Implement configurable roots**
 
 Modify `src/lib/paths.ts`, `src/lib/scanners.ts`, and `src/lib/state.ts` so:
 
@@ -212,7 +212,7 @@ Expected: PASS.
 - Keeps: `installHooks(environment.supportPath, target)`, `uninstallHooks(environment.supportPath, target)`, and `getHookInstallStatus(environment.supportPath)` working.
 - Adds: Setup view shows companion/WSL status without launching companion.
 
-- [ ] **Step 1: Write failing hook event root tests**
+- [x] **Step 1: Write failing hook event root tests**
 
 Add tests proving:
 
@@ -239,7 +239,7 @@ Run: `npm test -- src/lib/hooks.test.ts`
 
 Expected: FAIL before implementation.
 
-- [ ] **Step 2: Implement hook options without changing macOS defaults**
+- [x] **Step 2: Implement hook options without changing macOS defaults**
 
 Modify `src/lib/hooks.ts`:
 
@@ -267,7 +267,7 @@ npm run build
 
 Expected: PASS.
 
-- [ ] **Step 3: Update Setup separation copy**
+- [x] **Step 3: Update Setup separation copy**
 
 Modify `src/setup-hooks.tsx` to add a non-action health/list item:
 
@@ -302,7 +302,7 @@ Expected: PASS.
 - Produces: `revealedBounds(hidden, previousFullBounds, displayWorkArea)`
 - Produces: `resolveCompanionStateSource(platform, options)`
 
-- [ ] **Step 1: Write failing view model tests**
+- [x] **Step 1: Write failing view model tests**
 
 Test:
 
@@ -316,7 +316,7 @@ Run: `npm test -- src/companion/view-model.test.ts`
 
 Expected: FAIL before implementation.
 
-- [ ] **Step 2: Implement view model**
+- [x] **Step 2: Implement view model**
 
 Create `src/companion/view-model.ts` with pure functions only. It must not import Electron.
 
@@ -324,7 +324,7 @@ Run: `npm test -- src/companion/view-model.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 3: Write failing geometry tests**
+- [x] **Step 3: Write failing geometry tests**
 
 Test:
 
@@ -337,7 +337,7 @@ Run: `npm test -- src/companion/geometry.test.ts`
 
 Expected: FAIL before implementation.
 
-- [ ] **Step 4: Implement geometry helpers**
+- [x] **Step 4: Implement geometry helpers**
 
 Create `src/companion/geometry.ts` with plain `{ x, y, width, height }` types and no Electron imports.
 
@@ -345,7 +345,7 @@ Run: `npm test -- src/companion/geometry.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 5: Add state source tests and implementation**
+- [x] **Step 5: Add state source tests and implementation**
 
 Test that:
 
@@ -374,7 +374,7 @@ Expected: PASS after implementation.
 - Consumes: `geometry` helpers
 - Produces scripts: `companion:dev`, `companion:build`
 
-- [ ] **Step 1: Add Electron dependency and build scripts**
+- [x] **Step 1: Add Electron dependency and build scripts**
 
 Run:
 
@@ -395,7 +395,7 @@ Add scripts:
 
 If adding `scripts/build-companion.mjs`, include main, preload, renderer, CSS, and asset copy steps explicitly.
 
-- [ ] **Step 2: Implement main process**
+- [x] **Step 2: Implement main process**
 
 `src/companion/main.ts` must:
 
@@ -411,7 +411,7 @@ Run: `npm run companion:build`
 
 Expected: PASS.
 
-- [ ] **Step 3: Implement renderer**
+- [x] **Step 3: Implement renderer**
 
 Renderer must show:
 
@@ -432,7 +432,7 @@ npm run companion:build
 
 Expected: PASS.
 
-- [ ] **Step 4: Manual dev check**
+- [x] **Step 4: Manual dev check**
 
 Run `npm run companion:dev` on macOS if GUI execution is available.
 
@@ -460,7 +460,7 @@ If GUI execution is blocked by sandbox, record the exact command for user-side m
 - Produces script: `companion:package`
 - Produces docs for Windows + WSL2 prerequisites, macOS compatibility, development, packaging, and manual verification.
 
-- [ ] **Step 1: Add packaging**
+- [x] **Step 1: Add packaging**
 
 Run:
 
@@ -485,7 +485,7 @@ dist-companion
 release
 ```
 
-- [ ] **Step 2: Add docs**
+- [x] **Step 2: Add docs**
 
 Create `docs/companion.md` covering:
 
@@ -497,7 +497,7 @@ Create `docs/companion.md` covering:
 - package command: `npm run companion:package`.
 - manual checks for always-on-top, hide/minimize, edge-hide, hover reveal, path copy, WSL unavailable state.
 
-- [ ] **Step 3: Full verification**
+- [x] **Step 3: Full verification**
 
 Run:
 
@@ -513,7 +513,7 @@ Expected: all commands PASS.
 
 Run `npm run companion:package` on target platforms when available. If current platform cannot produce both Windows and macOS artifacts, record that target-platform packaging still needs target-platform execution.
 
-- [ ] **Step 4: Mark OpenSpec tasks complete after implementation**
+- [x] **Step 4: Mark OpenSpec tasks complete after implementation**
 
 Only after implementation and verification pass, update `openspec/changes/wsl2-monitoring/tasks.md` checkboxes from `[ ]` to `[x]`.
 

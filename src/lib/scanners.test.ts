@@ -1,3 +1,6 @@
+import { mkdir, mkdtemp, utimes, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseMonitorProjectPrefixes, matchesMonitorPrefixes } from "./paths";
 import {
@@ -8,9 +11,24 @@ import {
   inferCodexStatus,
   inferCodexStatusFromEvents,
   inferCodexTurnStartAt,
+  scanSessions,
 } from "./scanners";
 import { formatElapsed, toPositiveInt } from "./time";
 import type { SessionRecord } from "./types";
+
+async function writeJsonlFixture(
+  filePath: string,
+  lines: unknown[],
+  mtimeMs: number,
+) {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(
+    filePath,
+    `${lines.map((line) => JSON.stringify(line)).join("\n")}\n`,
+  );
+  const mtime = new Date(mtimeMs);
+  await utimes(filePath, mtime, mtime);
+}
 
 describe("preferences parsing", () => {
   it("falls back when numeric text is invalid", () => {
@@ -404,5 +422,157 @@ describe("session de-duplication", () => {
     expect(
       dedupeSessionsById([staleShortTranscript, freshFullTranscript]),
     ).toEqual([freshFullTranscript]);
+  });
+
+  it("does not let a newer Codex subagent transcript replace a running parent session", () => {
+    const parentSession = session({
+      id: "codex:shared-session",
+      status: "running",
+      updatedAt: "2026-07-01T14:11:00.000Z",
+      runningSince: "2026-07-01T14:06:34.643Z",
+      completedAt: undefined,
+      transcriptPath: "/tmp/parent.jsonl",
+    });
+    const subagentSession = session({
+      id: "codex:shared-session",
+      status: "done",
+      updatedAt: "2026-07-01T14:12:00.000Z",
+      runningSince: "2026-07-01T14:11:40.000Z",
+      transcriptPath: "/tmp/subagent.jsonl",
+    });
+
+    expect(dedupeSessionsById([parentSession, subagentSession])).toEqual([
+      parentSession,
+    ]);
+    expect(dedupeSessionsById([subagentSession, parentSession])).toEqual([
+      parentSession,
+    ]);
+  });
+});
+
+describe("configurable scan roots", () => {
+  it("does not keep Claude error status after a newer user turn starts", async () => {
+    const tmpRoot = await mkdtemp(path.join(os.tmpdir(), "codepulse-claude-"));
+    const claudeProjectsRoot = path.join(tmpRoot, "claude-projects");
+    const codexSessionsRoot = path.join(tmpRoot, "codex-sessions");
+    const now = Date.parse("2026-07-03T12:00:00.000Z");
+    const cwd = "/tmp/project";
+
+    await writeJsonlFixture(
+      path.join(claudeProjectsRoot, "-tmp-project", "session.jsonl"),
+      [
+        {
+          type: "user",
+          timestamp: "2026-07-03T11:58:00.000Z",
+          cwd,
+          sessionId: "claude-session",
+        },
+        {
+          type: "error",
+          timestamp: "2026-07-03T11:58:05.000Z",
+          isApiErrorMessage: true,
+        },
+        {
+          type: "user",
+          timestamp: "2026-07-03T11:59:40.000Z",
+          cwd,
+          sessionId: "claude-session",
+        },
+        {
+          type: "assistant",
+          timestamp: "2026-07-03T11:59:50.000Z",
+          message: { stop_reason: "tool_use" },
+        },
+      ],
+      now - 1_000,
+    );
+
+    const sessions = await scanSessions({
+      activeWindowMs: 5 * 60 * 1000,
+      monitorPrefixes: ["/tmp/project"],
+      now,
+      roots: {
+        claudeProjectsRoot,
+        codexSessionsRoot,
+      },
+    });
+
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({
+      agent: "claude",
+      status: "running",
+      runningSince: "2026-07-03T11:59:40.000Z",
+    });
+  });
+
+  it("reads Claude and Codex transcripts from injected roots", async () => {
+    const tmpRoot = await mkdtemp(path.join(os.tmpdir(), "codepulse-scan-"));
+    const claudeProjectsRoot = path.join(tmpRoot, "claude-projects");
+    const codexSessionsRoot = path.join(tmpRoot, "codex-sessions");
+    const now = Date.parse("2026-07-03T12:00:00.000Z");
+    const cwd = "/home/task-1/project/app";
+
+    await writeJsonlFixture(
+      path.join(
+        claudeProjectsRoot,
+        "-home-task-1-project-app",
+        "session.jsonl",
+      ),
+      [
+        {
+          type: "user",
+          timestamp: "2026-07-03T11:59:40.000Z",
+          cwd,
+          sessionId: "claude-session",
+        },
+        {
+          type: "assistant",
+          timestamp: "2026-07-03T11:59:50.000Z",
+          message: { stop_reason: "tool_use" },
+        },
+      ],
+      now - 1_000,
+    );
+    await writeJsonlFixture(
+      path.join(codexSessionsRoot, "2026", "07", "03", "codex-session.jsonl"),
+      [
+        {
+          type: "session_meta",
+          payload: { cwd, session_id: "codex-session" },
+        },
+        {
+          type: "event_msg",
+          timestamp: "2026-07-03T11:59:41.000Z",
+          payload: { type: "user_message" },
+        },
+        {
+          type: "response_item",
+          timestamp: "2026-07-03T11:59:55.000Z",
+          payload: { type: "agent_message" },
+        },
+      ],
+      now - 1_000,
+    );
+
+    const sessions = await scanSessions({
+      activeWindowMs: 5 * 60 * 1000,
+      monitorPrefixes: ["/home/task-1/project"],
+      now,
+      roots: {
+        claudeProjectsRoot,
+        codexSessionsRoot,
+      },
+    } as never);
+
+    expect(sessions).toHaveLength(2);
+    expect(
+      sessions.map((session) => ({
+        agent: session.agent,
+        cwd: session.cwd,
+      })),
+    ).toEqual([
+      { agent: "claude", cwd },
+      { agent: "codex", cwd },
+    ]);
   });
 });

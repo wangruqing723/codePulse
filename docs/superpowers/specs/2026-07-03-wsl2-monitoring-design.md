@@ -130,6 +130,12 @@ macOS companion 使用：
 - `scanRoots` 使用默认 home。
 - 默认不改写 Raycast supportPath events；如后续需要共享 Raycast hook events，应通过显式配置接入。
 
+补充约束：
+
+- Codex CLI 在存在 subagent 时，父会话与子会话的 transcript / event 归因必须保持隔离。
+- 菜单栏与 companion 的状态合并逻辑不得让 subagent 活动把父会话从 `running` 错误重置为其他状态。
+- 后续修复时应优先检查 session identity、最新事件归因和父子会话状态优先级，而不是只按项目路径或最近文件写入时间覆盖。
+
 ### 3. WSL2 adapter
 
 新增 `src/lib/wsl.ts`，职责保持窄边界：
