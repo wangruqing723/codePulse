@@ -71,6 +71,7 @@ Raycast 现有 `setup-hooks` command slug 保持不变，避免打断现有 deep
 - [Risk] 默认 WSL distro 与实际 CLI 所在 distro 不一致 -> MVP 明确只支持默认 distro，并在健康检查或悬浮窗错误态中暴露检测结果。
 - [Risk] hook 事件和 passive transcript 状态冲突 -> 继续沿用现有事件 freshness 和 debounce 规则，并为 WSL event path 增加测试。
 - [Risk] 恢复动作误伤其他 Electron 应用 -> kill 逻辑必须优先依赖 companion 自身登记的 pid、execPath 和入口参数，只允许清理匹配 CodePulse companion 特征的进程树。
+- [Risk] `npm run companion:dev` 首次启动可能从持久化 geometry 进入不可点击、不可 hover 的贴边隐藏状态 -> 后续修复需优先排查 geometry 恢复、窗口 ready/show 时序和 hover hit-test 状态，不把“第二次启动正常”当作已验证通过。
 
 ## Migration Plan
 
