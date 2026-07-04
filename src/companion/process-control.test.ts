@@ -83,6 +83,29 @@ describe("companion process control", () => {
     await expect(readCompanionProcessRecord()).resolves.toBeUndefined();
   });
 
+  it("clears a stale record even when another matching companion is running", async () => {
+    await registerCompanionProcess({
+      pid: 21707,
+      launcherPid: 21706,
+      startedAt: "2026-07-04T03:00:00.000Z",
+      platform: "darwin",
+      mode: "dev",
+      execPath: "/Applications/Electron.app/Contents/MacOS/Electron",
+      argv: ["dist-companion/main.cjs", "--codepulse-companion"],
+    });
+
+    __testing__.setExecFileResult({
+      stdout: `
+22999     1 /Applications/Electron.app/Contents/MacOS/Electron dist-companion/main.cjs --codepulse-companion
+23000 22999 /Applications/Electron.app/Contents/Frameworks/CodePulse Helper.app/Contents/MacOS/CodePulse Helper
+`.trim(),
+      stderr: "",
+    });
+
+    await expect(readCompanionProcessRecord()).resolves.toBeUndefined();
+    await expect(readCompanionProcessRecord()).resolves.toBeUndefined();
+  });
+
   it("kills the recorded companion tree without touching unrelated Electron processes", async () => {
     await registerCompanionProcess({
       pid: 21707,

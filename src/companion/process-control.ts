@@ -88,10 +88,6 @@ function isMissingProcessError(error: unknown): boolean {
   return "code" in error && (error as NodeJS.ErrnoException).code === "ESRCH";
 }
 
-function splitCommand(command: string): string[] {
-  return command.split(" ").filter(Boolean);
-}
-
 function buildMarkers(record: CompanionProcessRecord): string[] {
   return [record.execPath, ...record.argv].filter(Boolean);
 }
@@ -193,12 +189,9 @@ async function hasMatchingProcess(record: CompanionProcessRecord): Promise<boole
 
   const processes = await listProcesses();
   const recordedProcess = findProcess(processes, record.pid);
-  if (recordedProcess && commandMatchesRecord(recordedProcess.command, record)) {
-    return true;
-  }
-
-  return processes.some((processInfo) =>
-    commandMatchesRecord(processInfo.command, record),
+  return (
+    recordedProcess !== undefined &&
+    commandMatchesRecord(recordedProcess.command, record)
   );
 }
 
