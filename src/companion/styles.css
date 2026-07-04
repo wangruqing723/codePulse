@@ -89,15 +89,14 @@ select {
   flex: 0 0 44px;
   height: 28px;
   border-radius: 8px;
-  background:
-    linear-gradient(
-      90deg,
-      rgba(148, 163, 184, 0.22) 0 22%,
-      transparent 22% 39%,
-      rgba(148, 163, 184, 0.22) 39% 61%,
-      transparent 61% 78%,
-      rgba(148, 163, 184, 0.22) 78% 100%
-    );
+  background: linear-gradient(
+    90deg,
+    rgba(148, 163, 184, 0.22) 0 22%,
+    transparent 22% 39%,
+    rgba(148, 163, 184, 0.22) 39% 61%,
+    transparent 61% 78%,
+    rgba(148, 163, 184, 0.22) 78% 100%
+  );
   opacity: 0.78;
 }
 

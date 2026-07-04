@@ -71,7 +71,9 @@ async function readStoredRecord(): Promise<CompanionProcessRecord | undefined> {
   }
 }
 
-async function writeStoredRecord(record: CompanionProcessRecord): Promise<void> {
+async function writeStoredRecord(
+  record: CompanionProcessRecord,
+): Promise<void> {
   await deps.mkdir(companionControlRoot(), { recursive: true });
   await deps.writeFile(
     processRecordPath(),
@@ -174,7 +176,9 @@ function findProcess(
   return processes.find((processInfo) => processInfo.pid === pid);
 }
 
-async function hasMatchingProcess(record: CompanionProcessRecord): Promise<boolean> {
+async function hasMatchingProcess(
+  record: CompanionProcessRecord,
+): Promise<boolean> {
   if (deps.platform === "win32") {
     try {
       deps.kill(record.pid, 0);
@@ -263,9 +267,9 @@ export async function killCompanionProcess(): Promise<{
   }
 
   const matchedProcesses = await resolveMatchedProcesses(record);
-  const matchedPids = [...new Set(matchedProcesses.map((entry) => entry.pid))].sort(
-    (left, right) => left - right,
-  );
+  const matchedPids = [
+    ...new Set(matchedProcesses.map((entry) => entry.pid)),
+  ].sort((left, right) => left - right);
 
   if (matchedPids.length === 0) {
     await clearCompanionProcessRecord();
