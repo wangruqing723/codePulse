@@ -19,10 +19,10 @@ export interface CompanionProcessRecord {
 export interface ProcessControlDeps {
   platform: NodeJS.Platform;
   homedir(): string;
-  readFile: typeof readFile;
-  writeFile: typeof writeFile;
-  mkdir: typeof mkdir;
-  rm: typeof rm;
+  readFile(path: string, encoding: "utf8"): Promise<string>;
+  writeFile(path: string, content: string, encoding: "utf8"): Promise<void>;
+  mkdir(path: string, options: { recursive: true }): Promise<unknown>;
+  rm(path: string, options: { force: true }): Promise<void>;
   execFile(
     file: string,
     args: string[],

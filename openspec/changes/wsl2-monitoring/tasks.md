@@ -40,8 +40,8 @@
 
 ## 6. Companion 恢复与控制台入口
 
-- [ ] 6.1 抽象共享 companion 进程控制模块，记录 pid、launcherPid、execPath 和 argv，并为 stale 记录、整棵 companion 进程树清理、误伤其他 Electron 进程兜底过滤补充测试
-- [ ] 6.2 让 dev / packaged companion 启动时写入进程记录，并新增 `npm run companion:kill` 作为命令行恢复入口
-- [ ] 6.3 将 Raycast `Setup CodePulse Hooks` 展示名调整为 `CodePulse Center`，定位为“配置 + 恢复控制台”，保持 `setup-hooks` slug 和原有 hook 安装逻辑不变
-- [ ] 6.4 在 floating companion 内增加 `强制退出` 恢复动作，并通过 IPC 复用统一 kill 逻辑
+- [x] 6.1 抽象共享 companion 进程控制模块，记录 pid、launcherPid、execPath 和 argv，并为 stale 记录、整棵 companion 进程树清理、误伤其他 Electron 进程兜底过滤补充测试
+- [x] 6.2 让 dev / packaged companion 启动时写入进程记录，并新增 `npm run companion:kill` 作为命令行恢复入口
+- [x] 6.3 将 Raycast `Setup CodePulse Hooks` 展示名调整为 `CodePulse Center`，定位为“配置 + 恢复控制台”，保持 `setup-hooks` slug 和原有 hook 安装逻辑不变
+- [x] 6.4 在 floating companion 内增加 `强制退出` 恢复动作，并通过 IPC 复用统一 kill 逻辑
 - [ ] 6.5 在 macOS 环境验证 CLI kill、Raycast 恢复和 companion 内强制退出可清理卡死窗口；Windows + WSL2 验证暂记待补
