@@ -61,10 +61,12 @@ vi.mock("./view-model", () => ({
 }));
 
 const processControlMocks = vi.hoisted(() => ({
+  killCompanionProcess: vi.fn(),
   registerCompanionProcess: vi.fn(),
 }));
 
 vi.mock("./process-control", () => ({
+  killCompanionProcess: processControlMocks.killCompanionProcess,
   registerCompanionProcess: processControlMocks.registerCompanionProcess,
 }));
 
@@ -72,6 +74,10 @@ describe("companion main window display flow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     processControlMocks.registerCompanionProcess.mockResolvedValue(undefined);
+    processControlMocks.killCompanionProcess.mockResolvedValue({
+      status: "not-found",
+      matchedPids: [],
+    });
   });
 
   it("registers ipc handlers before creating the window", async () => {
@@ -204,6 +210,22 @@ describe("companion main window display flow", () => {
     expect(fakeWindow.on).toHaveBeenCalledWith("closed", expect.any(Function));
     expect(listeners.get("minimize")).toBeTypeOf("function");
     expect(listeners.get("restore")).toBeTypeOf("function");
+  });
+
+  it("registers force-exit IPC without routing it through window action handling", async () => {
+    const mainModule = await import("./main");
+
+    mainModule.__testing__.registerIpcHandlers();
+
+    const forceExitHandler = electronMocks.ipcMain.on.mock.calls.find(
+      ([channel]) => channel === "companion:force-exit",
+    )?.[1];
+
+    expect(forceExitHandler).toBeTypeOf("function");
+
+    await forceExitHandler?.();
+
+    expect(processControlMocks.killCompanionProcess).toHaveBeenCalledTimes(1);
   });
 
   it("cancels pending dock hide when minimizing a revealed docked window", async () => {

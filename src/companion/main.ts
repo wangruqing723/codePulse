@@ -24,7 +24,10 @@ import {
   type CompanionPlatform,
   type FloatingViewModel,
 } from "./view-model";
-import { registerCompanionProcess } from "./process-control";
+import {
+  killCompanionProcess,
+  registerCompanionProcess,
+} from "./process-control";
 
 const REFRESH_INTERVAL_MS = 5_000;
 const WINDOW_WIDTH = 340;
@@ -53,7 +56,8 @@ interface RuntimeWindowState {
   hidden: boolean;
 }
 
-type WindowAction = "hide" | "hover-enter" | "hover-leave" | "minimize";
+type WindowAction =
+  "force-exit" | "hide" | "hover-enter" | "hover-leave" | "minimize";
 type ReadyToShowWindow = Pick<BrowserWindow, "loadFile" | "once" | "show">;
 type LifecycleWindow = Pick<BrowserWindow, "on">;
 
@@ -404,6 +408,8 @@ function handleWindowAction(action: WindowAction): void {
       prepareForWindowMinimize();
       mainWindow?.minimize();
       break;
+    case "force-exit":
+      break;
   }
 }
 
@@ -482,8 +488,10 @@ async function createMainWindow(): Promise<BrowserWindow> {
 
 export const __testing__ = {
   attachWindowLifecycleHandlers,
-  getRuntimeWindowState: (): RuntimeWindowState | undefined => runtimeWindowState,
+  getRuntimeWindowState: (): RuntimeWindowState | undefined =>
+    runtimeWindowState,
   handleWindowAction,
+  registerIpcHandlers,
   resetState: (): void => {
     mainWindow = undefined;
     refreshTimer = undefined;
@@ -510,6 +518,9 @@ function registerIpcHandlers(): void {
   });
   ipcMain.on("companion:window-action", (_event, action: WindowAction) => {
     handleWindowAction(action);
+  });
+  ipcMain.on("companion:force-exit", () => {
+    void killCompanionProcess();
   });
   ipcMain.on("companion:dock-request", (_event, edge: DockEdge) => {
     dockToEdge(edge, false);

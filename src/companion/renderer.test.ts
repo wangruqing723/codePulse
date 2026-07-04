@@ -50,6 +50,7 @@ describe("companion renderer html", () => {
     expect(html).toContain("运行中 1 个");
     expect(html).toContain('data-action="hide"');
     expect(html).toContain('data-action="minimize"');
+    expect(html).toContain('data-action="force-exit"');
     expect(html).toContain("修复 companion");
     expect(html).toContain("复制路径");
   });
@@ -110,7 +111,10 @@ describe("companion renderer hover intent", () => {
     hover?.onPointerEnter();
     vi.advanceTimersByTime(120);
 
-    expect(requestWindowAction.mock.calls).toEqual([["hover-enter"], ["hover-enter"]]);
+    expect(requestWindowAction.mock.calls).toEqual([
+      ["hover-enter"],
+      ["hover-enter"],
+    ]);
     vi.useRealTimers();
   });
 
@@ -157,6 +161,31 @@ describe("companion renderer hover intent", () => {
     vi.advanceTimersByTime(180);
 
     expect(requestWindowAction.mock.calls).toEqual([["minimize"]]);
+    vi.useRealTimers();
+  });
+
+  it("requests force-exit as an immediate window action", async () => {
+    vi.useFakeTimers();
+    const { createHoverIntentController } = await loadRendererModule();
+    const requestWindowAction = vi.fn();
+
+    const hover = createHoverIntentController?.(
+      {
+        requestWindowAction,
+      } as never,
+      { hideDelayMs: 180 },
+    ) as
+      | {
+          onPointerLeave?: () => void;
+          onWindowAction?: (action: "hide" | "minimize" | "force-exit") => void;
+        }
+      | undefined;
+
+    hover?.onPointerLeave?.();
+    hover?.onWindowAction?.("force-exit");
+    vi.advanceTimersByTime(180);
+
+    expect(requestWindowAction.mock.calls).toEqual([["force-exit"]]);
     vi.useRealTimers();
   });
 

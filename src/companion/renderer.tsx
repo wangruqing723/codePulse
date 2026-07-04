@@ -101,6 +101,7 @@ export function renderFloatingHtml(model: FloatingViewModel): string {
         <div class="window-actions no-drag">
           <button type="button" class="window-button" data-action="hide">隐藏</button>
           <button type="button" class="window-button" data-action="minimize">最小化</button>
+          <button type="button" class="window-button" data-action="force-exit">强制退出</button>
         </div>
       </header>
       ${renderSessions(model)}
@@ -115,7 +116,7 @@ function renderIntoRoot(root: HTMLElement, model: FloatingViewModel): void {
 interface HoverIntentController {
   onPointerEnter(): void;
   onPointerLeave(): void;
-  onWindowAction(action: "hide" | "minimize"): void;
+  onWindowAction(action: "force-exit" | "hide" | "minimize"): void;
 }
 
 interface HoverIntentOptions {
@@ -175,7 +176,7 @@ function bindInteractions(root: HTMLElement, bridge: CompanionBridge): void {
     }
 
     const action = target.dataset.action;
-    if (action === "hide" || action === "minimize") {
+    if (action === "force-exit" || action === "hide" || action === "minimize") {
       hoverIntent.onWindowAction(action);
       return;
     }

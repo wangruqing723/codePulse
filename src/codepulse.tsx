@@ -310,7 +310,7 @@ export default function Command() {
           title="刷新"
           onAction={() => refresh(true)}
         />
-        <MenuBarExtra.Submenu icon={Icon.Gear} title="设置 Hooks">
+        <MenuBarExtra.Submenu icon={Icon.Gear} title="CodePulse Center">
           {SETUP_TARGETS.map((target) => {
             const installed = targetInstalled(hookStatus, target.id);
 
@@ -340,7 +340,7 @@ export default function Command() {
           )}
           <MenuBarExtra.Item
             icon={Icon.AppWindowSidebarLeft}
-            title="打开 Setup 面板"
+            title="打开 CodePulse Center"
             onAction={async () => {
               await open(
                 "raycast://extensions/code-pulse/code-pulse/setup-hooks",

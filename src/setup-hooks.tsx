@@ -10,6 +10,7 @@ import {
   showToast,
 } from "@raycast/api";
 import { useCallback, useEffect, useState } from "react";
+import { killCompanionProcess } from "./companion/process-control";
 import {
   getHookInstallStatus,
   installHooks,
@@ -65,6 +66,47 @@ export default function Command() {
       setIsLoading(false);
     }
   }, []);
+
+  const forceExitCompanion = useCallback(async () => {
+    const shouldKill = await confirmAlert({
+      title: "强制退出 Floating Companion?",
+      message:
+        "仅终止 CodePulse 记录的 companion 进程树，并清理 stale record。",
+      primaryAction: {
+        title: "强制退出",
+        style: Alert.ActionStyle.Destructive,
+      },
+      dismissAction: {
+        title: "取消",
+      },
+    });
+
+    if (!shouldKill) {
+      return;
+    }
+
+    try {
+      const result = await killCompanionProcess();
+      await showToast({
+        style: Toast.Style.Success,
+        title:
+          result.status === "killed"
+            ? "Floating companion 已退出"
+            : "未找到 Floating companion",
+        message:
+          result.matchedPids.length > 0
+            ? `PID: ${result.matchedPids.join(", ")}`
+            : undefined,
+      });
+      await refresh();
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Floating companion 强制退出失败",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }, [refresh]);
 
   useEffect(() => {
     void refresh();
@@ -142,14 +184,12 @@ export default function Command() {
   );
 
   return (
-    <List isLoading={isLoading} navigationTitle="Setup CodePulse Hooks">
+    <List isLoading={isLoading} navigationTitle="CodePulse Center">
       <List.Item
         icon={Icon.Info}
-        title="Floating companion"
+        title="Floating companion recovery"
         subtitle={
-          IS_MACOS
-            ? "Raycast menu-bar 和悬浮窗并行"
-            : "独立运行；Raycast 不启动或停止 companion"
+          IS_MACOS ? "配置 + 恢复控制台" : "WSL 事件由独立 companion 读取"
         }
         accessories={[
           {
@@ -158,6 +198,16 @@ export default function Command() {
               : "WSL events: ~/.codepulse/events",
           },
         ]}
+        actions={
+          <ActionPanel>
+            <Action
+              icon={Icon.XMarkCircle}
+              title="强制退出 Floating Companion"
+              style={Action.Style.Destructive}
+              onAction={forceExitCompanion}
+            />
+          </ActionPanel>
+        }
       />
       {TARGETS.map((target) => {
         const installed = targetInstalled(status, target.id);
