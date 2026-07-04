@@ -451,6 +451,60 @@ describe("session de-duplication", () => {
 });
 
 describe("configurable scan roots", () => {
+  it("does not keep Claude error status after a newer user turn starts", async () => {
+    const tmpRoot = await mkdtemp(path.join(os.tmpdir(), "codepulse-claude-"));
+    const claudeProjectsRoot = path.join(tmpRoot, "claude-projects");
+    const codexSessionsRoot = path.join(tmpRoot, "codex-sessions");
+    const now = Date.parse("2026-07-03T12:00:00.000Z");
+    const cwd = "/tmp/project";
+
+    await writeJsonlFixture(
+      path.join(claudeProjectsRoot, "-tmp-project", "session.jsonl"),
+      [
+        {
+          type: "user",
+          timestamp: "2026-07-03T11:58:00.000Z",
+          cwd,
+          sessionId: "claude-session",
+        },
+        {
+          type: "error",
+          timestamp: "2026-07-03T11:58:05.000Z",
+          isApiErrorMessage: true,
+        },
+        {
+          type: "user",
+          timestamp: "2026-07-03T11:59:40.000Z",
+          cwd,
+          sessionId: "claude-session",
+        },
+        {
+          type: "assistant",
+          timestamp: "2026-07-03T11:59:50.000Z",
+          message: { stop_reason: "tool_use" },
+        },
+      ],
+      now - 1_000,
+    );
+
+    const sessions = await scanSessions({
+      activeWindowMs: 5 * 60 * 1000,
+      monitorPrefixes: ["/tmp/project"],
+      now,
+      roots: {
+        claudeProjectsRoot,
+        codexSessionsRoot,
+      },
+    });
+
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({
+      agent: "claude",
+      status: "running",
+      runningSince: "2026-07-03T11:59:40.000Z",
+    });
+  });
+
   it("reads Claude and Codex transcripts from injected roots", async () => {
     const tmpRoot = await mkdtemp(path.join(os.tmpdir(), "codepulse-scan-"));
     const claudeProjectsRoot = path.join(tmpRoot, "claude-projects");

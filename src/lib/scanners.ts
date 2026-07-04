@@ -228,8 +228,22 @@ export function inferCodexStatus(
   return "idle";
 }
 
+function lastClaudeTurnStartIndex(events: JsonObject[]): number {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    if (isClaudeTurnStartEvent(events[index])) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
 function hasClaudeError(events: JsonObject[]): boolean {
-  return events.some((event) => {
+  const turnStartIndex = lastClaudeTurnStartIndex(events);
+  const currentTurnEvents =
+    turnStartIndex >= 0 ? events.slice(turnStartIndex) : events;
+
+  return currentTurnEvents.some((event) => {
     const message = asObject(event.message);
     return (
       event.type === "error" ||
