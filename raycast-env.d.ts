@@ -15,7 +15,11 @@ type ExtensionPreferences = {
   /** 启用声音 - 当前使用 Raycast 通知能力，声音由系统通知设置控制。 */
   "enableSound": boolean,
   /** 监控项目路径 - 可选。用逗号分隔路径前缀；留空表示监控全部近期会话。 */
-  "monitorProjects"?: string
+  "monitorProjects"?: string,
+  /** Companion Release Tag - 可选。默认使用当前扩展版本，例如 codepulse-companion-v0.1.3。 */
+  "companionReleaseTag"?: string,
+  /** Companion Manifest URL - 可选。覆盖默认 GitHub Release manifest URL。 */
+  "companionManifestUrl"?: string
 }
 
 /** Preferences accessible in all the extension's commands */

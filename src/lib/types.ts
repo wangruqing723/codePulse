@@ -9,6 +9,8 @@ export interface Preferences {
   menuBarStyle?: "icon" | "count" | "session";
   enableSound?: boolean;
   monitorProjects?: string;
+  companionReleaseTag?: string;
+  companionManifestUrl?: string;
 }
 
 export interface SessionRecord {

@@ -11,6 +11,7 @@ import {
   showToast,
 } from "@raycast/api";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { bootstrapCompanion } from "./companion/launch-control";
 import { killCompanionProcess } from "./companion/process-control";
 import {
   companionPreferencesRoot,
@@ -58,6 +59,61 @@ function targetInstalled(
   }
 
   return target === "claude" ? status.claudeInstalled : status.codexInstalled;
+}
+
+export async function handleLaunchCompanion(
+  preferences: Pick<
+    Preferences,
+    "companionReleaseTag" | "companionManifestUrl"
+  > = {},
+): Promise<void> {
+  const result = await bootstrapCompanion({
+    supportPath: environment.supportPath,
+    releaseTag: preferences.companionReleaseTag,
+    manifestUrl: preferences.companionManifestUrl,
+  });
+
+  if (result.status === "launched") {
+    await showToast({
+      style: Toast.Style.Success,
+      title: "Floating Companion 已启动",
+      message: result.path,
+    });
+    return;
+  }
+
+  if (result.status === "release-unavailable") {
+    await showToast({
+      style: Toast.Style.Failure,
+      title: "Release artifact 不可用",
+      message: "请先将仓库转为公开并发布 companion release。",
+    });
+    return;
+  }
+
+  if (result.status === "unsupported-platform") {
+    await showToast({
+      style: Toast.Style.Failure,
+      title: "当前平台暂不支持 Floating Companion",
+      message: result.platformKey,
+    });
+    return;
+  }
+
+  if (result.status === "hash-mismatch") {
+    await showToast({
+      style: Toast.Style.Failure,
+      title: "Floating Companion 校验失败",
+      message: "下载内容与 manifest SHA-256 不一致。",
+    });
+    return;
+  }
+
+  await showToast({
+    style: Toast.Style.Failure,
+    title: "Floating Companion 安装失败",
+    message: result.message,
+  });
 }
 
 export default function Command() {
@@ -211,6 +267,13 @@ export default function Command() {
         ]}
         actions={
           <ActionPanel>
+            <Action
+              icon={Icon.Play}
+              title="Install / Start Floating Companion"
+              onAction={() => {
+                void handleLaunchCompanion(preferences);
+              }}
+            />
             <Action
               icon={Icon.XMarkCircle}
               title="强制退出 Floating Companion"

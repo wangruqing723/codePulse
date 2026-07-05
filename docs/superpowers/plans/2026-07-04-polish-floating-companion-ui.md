@@ -2,6 +2,7 @@
 change: polish-floating-companion-ui
 design-doc: docs/superpowers/specs/2026-07-04-polish-floating-companion-ui-design.md
 base-ref: f6d611ca49871bd08e2b8af912b03eb9180e2489
+archived-with: 2026-07-05-polish-floating-companion-ui
 ---
 
 # Polish Floating Companion UI Implementation Plan
@@ -20,8 +21,6 @@ base-ref: f6d611ca49871bd08e2b8af912b03eb9180e2489
 - Keep existing `data-action` window action names: `hide`, `minimize`, `force-exit`.
 - Preserve fallback behavior: environment variables first when no snapshot exists, default active window remains 5 minutes.
 - Do not change state inference, WSL path conversion, or path copy semantics.
-
----
 
 ### Task 1: Renderer Icon Click Delegation
 

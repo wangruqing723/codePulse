@@ -2,6 +2,8 @@
 comet_change: polish-floating-companion-ui
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-07-05-polish-floating-companion-ui
+status: final
 ---
 
 # Polish Floating Companion UI Design

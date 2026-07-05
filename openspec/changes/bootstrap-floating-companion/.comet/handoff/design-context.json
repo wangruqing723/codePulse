@@ -1,0 +1,14 @@
+{
+  "change": "bootstrap-floating-companion",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "c5daa94181f58ca7e717d6e762df12a283a4c97d4343ca1d97a00459a07a38c4",
+  "files": [
+    { "path": "openspec/changes/bootstrap-floating-companion/proposal.md", "sha256": "a0c260446448e6c0e95977e6e2961c305302591f0fa7dad720c4c38aea036c93" },
+    { "path": "openspec/changes/bootstrap-floating-companion/design.md", "sha256": "f49fab7d7328722cdb021599d435f3c4031d491da28e58cc3c40318e631cfaae" },
+    { "path": "openspec/changes/bootstrap-floating-companion/tasks.md", "sha256": "ad8ecf30c060544e56e471329aa11b9eb64d85ecb45fd597bdec88295cf91294" },
+    { "path": "openspec/changes/bootstrap-floating-companion/specs/wsl2-monitoring/spec.md", "sha256": "b984bdaa5f8e7ede5990245c24b8c07e1cb4c5866d95e091fa9eebebcbaea291" }
+  ]
+}
