@@ -11,7 +11,10 @@ import {
   showToast,
 } from "@raycast/api";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { bootstrapCompanion } from "./companion/launch-control";
+import {
+  bootstrapCompanion,
+  type CompanionBootstrapProgress,
+} from "./companion/launch-control";
 import { killCompanionProcess } from "./companion/process-control";
 import {
   companionPreferencesRoot,
@@ -27,6 +30,7 @@ import {
 import type { Preferences } from "./lib/types";
 
 type SetupTarget = Exclude<HookTarget, "all">;
+type RaycastToast = Awaited<ReturnType<typeof showToast>>;
 
 const TARGETS: Array<{
   id: SetupTarget;
@@ -67,7 +71,7 @@ export async function handleLaunchCompanion(
     "companionReleaseTag" | "companionManifestUrl"
   > = {},
 ): Promise<void> {
-  await showToast({
+  const toast = await showToast({
     style: Toast.Style.Animated,
     title: "正在安装 / 启动 Floating Companion",
     message: "正在检查本地安装；如未安装会下载 release artifact。",
@@ -77,49 +81,101 @@ export async function handleLaunchCompanion(
     supportPath: environment.supportPath,
     releaseTag: preferences.companionReleaseTag,
     manifestUrl: preferences.companionManifestUrl,
+    onProgress: (progress) => {
+      updateCompanionProgressToast(toast, progress);
+    },
   });
 
   if (result.status === "launched") {
-    await showToast({
-      style: Toast.Style.Success,
-      title: "Floating Companion 已启动",
-      message: result.path,
-    });
+    toast.style = Toast.Style.Success;
+    toast.title = "Floating Companion 已启动";
+    toast.message = result.path;
     return;
   }
 
   if (result.status === "release-unavailable") {
-    await showToast({
-      style: Toast.Style.Failure,
-      title: "Release artifact 不可用",
-      message: "请先将仓库转为公开并发布 companion release。",
-    });
+    toast.style = Toast.Style.Failure;
+    toast.title = "Release artifact 不可用";
+    toast.message = "请先将仓库转为公开并发布 companion release。";
     return;
   }
 
   if (result.status === "unsupported-platform") {
-    await showToast({
-      style: Toast.Style.Failure,
-      title: "当前平台暂不支持 Floating Companion",
-      message: result.platformKey,
-    });
+    toast.style = Toast.Style.Failure;
+    toast.title = "当前平台暂不支持 Floating Companion";
+    toast.message = result.platformKey;
     return;
   }
 
   if (result.status === "hash-mismatch") {
-    await showToast({
-      style: Toast.Style.Failure,
-      title: "Floating Companion 校验失败",
-      message: "下载内容与 manifest SHA-256 不一致。",
-    });
+    toast.style = Toast.Style.Failure;
+    toast.title = "Floating Companion 校验失败";
+    toast.message = "下载内容与 manifest SHA-256 不一致。";
     return;
   }
 
-  await showToast({
-    style: Toast.Style.Failure,
-    title: "Floating Companion 安装失败",
-    message: result.message,
-  });
+  toast.style = Toast.Style.Failure;
+  toast.title = "Floating Companion 安装失败";
+  toast.message = result.message;
+}
+
+function updateCompanionProgressToast(
+  toast: RaycastToast,
+  progress: CompanionBootstrapProgress,
+): void {
+  toast.style = Toast.Style.Animated;
+
+  if (progress.stage === "checking-installed") {
+    toast.title = "正在检查 Floating Companion";
+    toast.message = "正在检查本地安装。";
+    return;
+  }
+
+  if (progress.stage === "fetching-manifest") {
+    toast.title = "正在检查 release artifact";
+    toast.message = progress.manifestUrl;
+    return;
+  }
+
+  if (progress.stage === "downloading") {
+    toast.title = "正在下载 Floating Companion";
+    toast.message = progress.totalBytes
+      ? `${formatBytes(progress.downloadedBytes)} / ${formatBytes(progress.totalBytes)}`
+      : formatBytes(progress.downloadedBytes);
+    return;
+  }
+
+  if (progress.stage === "verifying") {
+    toast.title = "正在校验 Floating Companion";
+    toast.message = "正在校验 SHA-256。";
+    return;
+  }
+
+  if (progress.stage === "extracting") {
+    toast.title = "正在安装 Floating Companion";
+    toast.message = "正在解压 release artifact。";
+    return;
+  }
+
+  toast.title = "正在启动 Floating Companion";
+  toast.message = "正在打开 companion app。";
+}
+
+function formatBytes(bytes: number): string {
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  if (unitIndex === 0) {
+    return `${value} ${units[unitIndex]}`;
+  }
+
+  return `${value.toFixed(1)} ${units[unitIndex]}`;
 }
 
 export default function Command() {

@@ -8,9 +8,19 @@ vi.mock("./companion/launch-control", () => ({
 }));
 
 describe("CodePulse Center companion bootstrap action", () => {
+  const toast = {
+    style: "animated",
+    title: "",
+    message: undefined as string | undefined,
+  };
+
   beforeEach(() => {
     vi.mocked(showToast).mockClear();
     vi.mocked(bootstrapCompanion).mockReset();
+    toast.style = "animated";
+    toast.title = "";
+    toast.message = undefined;
+    vi.mocked(showToast).mockResolvedValue(toast as never);
   });
 
   it("shows a success toast after launching the companion", async () => {
@@ -28,8 +38,9 @@ describe("CodePulse Center companion bootstrap action", () => {
       supportPath: expect.any(String),
       releaseTag: "codepulse-companion-v0.1.3",
       manifestUrl: "",
+      onProgress: expect.any(Function),
     });
-    expect(showToast).toHaveBeenCalledWith({
+    expect(toast).toMatchObject({
       style: "success",
       title: "Floating Companion 已启动",
       message:
@@ -37,7 +48,7 @@ describe("CodePulse Center companion bootstrap action", () => {
     });
   });
 
-  it("shows an in-progress toast before waiting for companion bootstrap", async () => {
+  it("updates the in-progress toast while companion bootstrap reports progress", async () => {
     let resolveBootstrap: (
       result: Awaited<ReturnType<typeof bootstrapCompanion>>,
     ) => void = () => undefined;
@@ -54,6 +65,20 @@ describe("CodePulse Center companion bootstrap action", () => {
       style: "animated",
       title: "正在安装 / 启动 Floating Companion",
       message: "正在检查本地安装；如未安装会下载 release artifact。",
+    });
+
+    const onProgress =
+      vi.mocked(bootstrapCompanion).mock.calls[0]?.[0].onProgress;
+    onProgress?.({
+      stage: "downloading",
+      downloadedBytes: 1024 * 1024,
+      totalBytes: 2 * 1024 * 1024,
+    });
+
+    expect(toast).toMatchObject({
+      style: "animated",
+      title: "正在下载 Floating Companion",
+      message: "1.0 MB / 2.0 MB",
     });
 
     resolveBootstrap({
@@ -91,11 +116,7 @@ describe("CodePulse Center companion bootstrap action", () => {
 
       await handleLaunchCompanion({});
 
-      expect(showToast).toHaveBeenCalledWith({
-        style: "failure",
-        title,
-        message,
-      });
+      expect(toast).toMatchObject({ style: "failure", title, message });
     },
   );
 });

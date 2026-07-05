@@ -1,7 +1,11 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
+import { once } from "node:events";
+import { createWriteStream } from "node:fs";
 import { access, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { Readable } from "node:stream";
+import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { promisify } from "node:util";
 import { environment, open } from "@raycast/api";
 import packageJson from "../../package.json";
@@ -47,7 +51,29 @@ export interface BootstrapCompanionOptions {
   supportPath: string;
   releaseTag?: string;
   manifestUrl?: string;
+  onProgress?: (progress: CompanionBootstrapProgress) => void;
 }
+
+interface DownloadFileResult {
+  sha256: string;
+}
+
+interface DownloadFileProgress {
+  downloadedBytes: number;
+  totalBytes?: number;
+}
+
+export type CompanionBootstrapProgress =
+  | { stage: "checking-installed" }
+  | { stage: "fetching-manifest"; manifestUrl: string }
+  | {
+      stage: "downloading";
+      downloadedBytes: number;
+      totalBytes?: number;
+    }
+  | { stage: "verifying" }
+  | { stage: "extracting" }
+  | { stage: "launching" };
 
 interface BootstrapDeps {
   platform: NodeJS.Platform;
@@ -55,6 +81,11 @@ interface BootstrapDeps {
   packageVersion: string;
   access(path: string): Promise<void>;
   fetch(input: string): Promise<Response>;
+  downloadFile(
+    url: string,
+    destinationPath: string,
+    onProgress?: (progress: DownloadFileProgress) => void,
+  ): Promise<DownloadFileResult | undefined>;
   mkdir(path: string, options?: { recursive?: boolean }): Promise<void>;
   writeFile(path: string, data: Uint8Array): Promise<void>;
   rm(
@@ -97,6 +128,67 @@ async function extractZip(
   throw new Error(`Unsupported extraction platform: ${platform}`);
 }
 
+async function downloadFile(
+  url: string,
+  destinationPath: string,
+  onProgress?: (progress: DownloadFileProgress) => void,
+): Promise<DownloadFileResult | undefined> {
+  const response = await fetch(url);
+  if (!response.ok) return undefined;
+  if (!response.body) {
+    throw new Error(`Download response did not include a body: ${url}`);
+  }
+
+  const contentLength = response.headers.get("content-length");
+  const totalBytes = contentLength ? Number(contentLength) : undefined;
+  const hash = createHash("sha256");
+  const file = createWriteStream(destinationPath, { flags: "w" });
+  let downloadedBytes = 0;
+  let writeError: unknown;
+
+  file.on("error", (error) => {
+    writeError = error;
+  });
+
+  try {
+    for await (const chunk of Readable.fromWeb(
+      response.body as unknown as NodeReadableStream<Uint8Array>,
+    )) {
+      const bytes =
+        chunk instanceof Uint8Array ? chunk : Buffer.from(String(chunk));
+      hash.update(bytes);
+      downloadedBytes += bytes.byteLength;
+      if (!file.write(bytes)) {
+        await waitForStreamDrain(file);
+      }
+      onProgress?.({
+        downloadedBytes,
+        totalBytes:
+          totalBytes && Number.isFinite(totalBytes) ? totalBytes : undefined,
+      });
+      if (writeError) throw writeError;
+    }
+  } catch (error) {
+    file.destroy();
+    throw error;
+  }
+
+  file.end();
+  await once(file, "finish");
+  if (writeError) throw writeError;
+
+  return { sha256: hash.digest("hex") };
+}
+
+async function waitForStreamDrain(file: NodeJS.WritableStream): Promise<void> {
+  await Promise.race([
+    once(file, "drain"),
+    once(file, "error").then(([error]) => {
+      throw error;
+    }),
+  ]);
+}
+
 function createDefaultDeps(): BootstrapDeps {
   return {
     platform: process.platform,
@@ -104,6 +196,7 @@ function createDefaultDeps(): BootstrapDeps {
     packageVersion: packageJson.version,
     access,
     fetch: async (input) => fetch(input),
+    downloadFile,
     mkdir: async (targetPath, options) => {
       await mkdir(targetPath, options);
     },
@@ -166,10 +259,6 @@ function joinForPlatform(
   return pathApi.join(basePath, ...segments);
 }
 
-function sha256(data: Uint8Array): string {
-  return createHash("sha256").update(data).digest("hex");
-}
-
 async function fetchJson(
   url: string,
 ): Promise<CompanionReleaseManifest | undefined> {
@@ -182,13 +271,14 @@ async function fetchJson(
   }
 }
 
-async function fetchBytes(url: string): Promise<Uint8Array | undefined> {
+function emitProgress(
+  onProgress: BootstrapCompanionOptions["onProgress"],
+  progress: CompanionBootstrapProgress,
+): void {
   try {
-    const response = await deps.fetch(url);
-    if (!response.ok) return undefined;
-    return new Uint8Array(await response.arrayBuffer());
+    onProgress?.(progress);
   } catch {
-    return undefined;
+    // Progress UI must never interrupt the install pipeline.
   }
 }
 
@@ -196,6 +286,7 @@ export async function bootstrapCompanion(
   options: BootstrapCompanionOptions,
 ): Promise<CompanionBootstrapResult> {
   const platformKey = getPlatformKey(deps.platform, deps.arch);
+  emitProgress(options.onProgress, { stage: "checking-installed" });
   const installed = installedEntrypointPath(
     options.supportPath,
     deps.packageVersion,
@@ -217,6 +308,7 @@ export async function bootstrapCompanion(
     releaseTag: options.releaseTag,
     manifestUrl: options.manifestUrl,
   });
+  emitProgress(options.onProgress, { stage: "fetching-manifest", manifestUrl });
   const manifest = await fetchJson(manifestUrl);
   if (!manifest) return { status: "release-unavailable", message: manifestUrl };
 
@@ -230,6 +322,7 @@ export async function bootstrapCompanion(
   const zipPath = joinForPlatform(platformKey, downloadsDir, [
     `${manifest.version}-${platformKey}.zip`,
   ]);
+  const partialZipPath = `${zipPath}.part`;
   const installDir = joinForPlatform(platformKey, options.supportPath, [
     "companion",
     manifest.version,
@@ -240,27 +333,48 @@ export async function bootstrapCompanion(
     artifact.entrypoint,
   ]);
 
-  const bytes = await fetchBytes(artifact.url);
-  if (!bytes) return { status: "release-unavailable", message: artifact.url };
-
-  const actual = sha256(bytes);
-  if (actual !== artifact.sha256) {
-    await deps.rm(zipPath, { force: true });
-    return { status: "hash-mismatch", expected: artifact.sha256, actual };
-  }
-
   try {
     await deps.mkdir(downloadsDir, { recursive: true });
-    await deps.writeFile(zipPath, bytes);
+    await deps.rm(partialZipPath, { force: true });
+
+    const download = await deps.downloadFile(
+      artifact.url,
+      partialZipPath,
+      (progress) => {
+        emitProgress(options.onProgress, {
+          stage: "downloading",
+          ...progress,
+        });
+      },
+    );
+    if (!download) {
+      return { status: "release-unavailable", message: artifact.url };
+    }
+
+    emitProgress(options.onProgress, { stage: "verifying" });
+    if (download.sha256 !== artifact.sha256) {
+      await deps.rm(partialZipPath, { force: true });
+      await deps.rm(zipPath, { force: true });
+      return {
+        status: "hash-mismatch",
+        expected: artifact.sha256,
+        actual: download.sha256,
+      };
+    }
+
+    await deps.rename(partialZipPath, zipPath);
     await deps.rm(tempDir, { recursive: true, force: true });
     await deps.mkdir(tempDir, { recursive: true });
+    emitProgress(options.onProgress, { stage: "extracting" });
     await deps.extractZip(zipPath, tempDir, deps.platform);
     await deps.rm(installDir, { recursive: true, force: true });
     await deps.rename(tempDir, installDir);
+    emitProgress(options.onProgress, { stage: "launching" });
     await deps.open(entrypointPath);
     return { status: "launched", path: entrypointPath };
   } catch (error) {
     try {
+      await deps.rm(partialZipPath, { force: true });
       await deps.rm(tempDir, { recursive: true, force: true });
     } catch {
       // Preserve the original install failure for the Raycast toast.

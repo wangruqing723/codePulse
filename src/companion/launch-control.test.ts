@@ -134,7 +134,9 @@ describe("companion bootstrap launch control", () => {
   });
 
   it("does not extract or launch when the downloaded zip hash mismatches", async () => {
+    const mkdir = vi.fn(async () => undefined);
     const rm = vi.fn(async () => undefined);
+    const downloadFile = vi.fn(async () => ({ sha256: "actual" }));
     const extractZip = vi.fn(async () => undefined);
     const open = vi.fn(async () => undefined);
 
@@ -145,22 +147,21 @@ describe("companion bootstrap launch control", () => {
       access: vi.fn(async () => {
         throw new Error("ENOENT");
       }),
-      fetch: vi
-        .fn()
-        .mockResolvedValueOnce(
-          Response.json({
-            version: "0.1.3",
-            artifacts: {
-              "darwin-arm64": {
-                url: "https://example.test/companion.zip",
-                sha256: "expected",
-                entrypoint: "CodePulse Companion.app",
-              },
+      fetch: vi.fn().mockResolvedValueOnce(
+        Response.json({
+          version: "0.1.3",
+          artifacts: {
+            "darwin-arm64": {
+              url: "https://example.test/companion.zip",
+              sha256: "expected",
+              entrypoint: "CodePulse Companion.app",
             },
-          }),
-        )
-        .mockResolvedValueOnce(new Response("zip-bytes")),
+          },
+        }),
+      ),
+      mkdir,
       rm,
+      downloadFile,
       extractZip,
       open,
     });
@@ -169,16 +170,23 @@ describe("companion bootstrap launch control", () => {
       bootstrapCompanion({ supportPath: "/raycast/support" }),
     ).resolves.toMatchObject({ status: "hash-mismatch", expected: "expected" });
 
-    expect(rm).toHaveBeenCalled();
+    expect(downloadFile).toHaveBeenCalledWith(
+      "https://example.test/companion.zip",
+      "/raycast/support/companion/downloads/0.1.3-darwin-arm64.zip.part",
+      expect.any(Function),
+    );
+    expect(rm).toHaveBeenCalledWith(
+      "/raycast/support/companion/downloads/0.1.3-darwin-arm64.zip.part",
+      { force: true },
+    );
     expect(extractZip).not.toHaveBeenCalled();
     expect(open).not.toHaveBeenCalled();
   });
 
-  it("reports install-failed without extracting or launching when writing the artifact fails", async () => {
-    const zipBytes = new TextEncoder().encode("zip-bytes");
+  it("reports install-failed without extracting or launching when streaming the artifact fails", async () => {
     const expectedHash =
       "4b9a4ac59f3c3aa32273260df6cf4bf358d1c46f8415126aa35b6380d0abb8f7";
-    const writeFile = vi.fn(async () => {
+    const downloadFile = vi.fn(async () => {
       throw new Error("EACCES: support path is not writable");
     });
     const mkdir = vi.fn(async () => undefined);
@@ -192,23 +200,20 @@ describe("companion bootstrap launch control", () => {
       access: vi.fn(async () => {
         throw new Error("ENOENT");
       }),
-      fetch: vi
-        .fn()
-        .mockResolvedValueOnce(
-          Response.json({
-            version: "0.1.3",
-            artifacts: {
-              "darwin-arm64": {
-                url: "https://example.test/companion.zip",
-                sha256: expectedHash,
-                entrypoint: "CodePulse Companion.app",
-              },
+      fetch: vi.fn().mockResolvedValueOnce(
+        Response.json({
+          version: "0.1.3",
+          artifacts: {
+            "darwin-arm64": {
+              url: "https://example.test/companion.zip",
+              sha256: expectedHash,
+              entrypoint: "CodePulse Companion.app",
             },
-          }),
-        )
-        .mockResolvedValueOnce(new Response(zipBytes)),
+          },
+        }),
+      ),
       mkdir,
-      writeFile,
+      downloadFile,
       extractZip,
       open,
     });
@@ -220,21 +225,40 @@ describe("companion bootstrap launch control", () => {
       message: "EACCES: support path is not writable",
     });
 
-    expect(writeFile).toHaveBeenCalled();
+    expect(downloadFile).toHaveBeenCalledWith(
+      "https://example.test/companion.zip",
+      "/raycast/support/companion/downloads/0.1.3-darwin-arm64.zip.part",
+      expect.any(Function),
+    );
     expect(extractZip).not.toHaveBeenCalled();
     expect(open).not.toHaveBeenCalled();
   });
 
-  it("downloads, verifies, extracts, and launches a valid artifact", async () => {
-    const zipBytes = new TextEncoder().encode("zip-bytes");
+  it("streams, verifies, extracts, and launches a valid artifact", async () => {
     const expectedHash =
       "4b9a4ac59f3c3aa32273260df6cf4bf358d1c46f8415126aa35b6380d0abb8f7";
-    const writeFile = vi.fn(async () => undefined);
+    const downloadFile = vi.fn(
+      async (
+        _url: string,
+        _destinationPath: string,
+        onProgress?: (progress: {
+          downloadedBytes: number;
+          totalBytes?: number;
+        }) => void,
+      ) => {
+        onProgress?.({
+          downloadedBytes: 1024 * 1024,
+          totalBytes: 2 * 1024 * 1024,
+        });
+        return { sha256: expectedHash };
+      },
+    );
     const mkdir = vi.fn(async () => undefined);
     const rm = vi.fn(async () => undefined);
     const rename = vi.fn(async () => undefined);
     const extractZip = vi.fn(async () => undefined);
     const open = vi.fn(async () => undefined);
+    const onProgress = vi.fn();
 
     __testing__.setDeps({
       platform: "darwin",
@@ -243,23 +267,20 @@ describe("companion bootstrap launch control", () => {
       access: vi.fn(async () => {
         throw new Error("ENOENT");
       }),
-      fetch: vi
-        .fn()
-        .mockResolvedValueOnce(
-          Response.json({
-            version: "0.1.3",
-            artifacts: {
-              "darwin-arm64": {
-                url: "https://example.test/companion.zip",
-                sha256: expectedHash,
-                entrypoint: "CodePulse Companion.app",
-              },
+      fetch: vi.fn().mockResolvedValueOnce(
+        Response.json({
+          version: "0.1.3",
+          artifacts: {
+            "darwin-arm64": {
+              url: "https://example.test/companion.zip",
+              sha256: expectedHash,
+              entrypoint: "CodePulse Companion.app",
             },
-          }),
-        )
-        .mockResolvedValueOnce(new Response(zipBytes)),
+          },
+        }),
+      ),
       mkdir,
-      writeFile,
+      downloadFile,
       rm,
       rename,
       extractZip,
@@ -267,12 +288,39 @@ describe("companion bootstrap launch control", () => {
     });
 
     await expect(
-      bootstrapCompanion({ supportPath: "/raycast/support" }),
+      bootstrapCompanion({ supportPath: "/raycast/support", onProgress }),
     ).resolves.toEqual({
       status: "launched",
       path: "/raycast/support/companion/0.1.3/darwin-arm64/CodePulse Companion.app",
     });
 
+    expect(mkdir).toHaveBeenCalledWith("/raycast/support/companion/downloads", {
+      recursive: true,
+    });
+    expect(downloadFile).toHaveBeenCalledWith(
+      "https://example.test/companion.zip",
+      "/raycast/support/companion/downloads/0.1.3-darwin-arm64.zip.part",
+      expect.any(Function),
+    );
+    expect(onProgress).toHaveBeenCalledWith({
+      stage: "fetching-manifest",
+      manifestUrl:
+        "https://github.com/wangruqing723/codePulse/releases/download/codepulse-companion-v0.1.3/codepulse-companion-manifest.json",
+    });
+    expect(onProgress).toHaveBeenCalledWith({
+      stage: "downloading",
+      downloadedBytes: 1024 * 1024,
+      totalBytes: 2 * 1024 * 1024,
+    });
+    expect(onProgress).toHaveBeenCalledWith({ stage: "extracting" });
+    expect(onProgress).toHaveBeenCalledWith({ stage: "launching" });
+    expect(rename).toHaveBeenCalledWith(
+      "/raycast/support/companion/downloads/0.1.3-darwin-arm64.zip.part",
+      "/raycast/support/companion/downloads/0.1.3-darwin-arm64.zip",
+    );
+    expect(mkdir.mock.invocationCallOrder[0]).toBeLessThan(
+      downloadFile.mock.invocationCallOrder[0],
+    );
     expect(extractZip).toHaveBeenCalled();
     expect(rename).toHaveBeenCalled();
     expect(open).toHaveBeenCalledWith(
