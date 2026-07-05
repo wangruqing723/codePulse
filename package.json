@@ -1,19 +1,23 @@
 {
   "$schema": "https://www.raycast.com/schemas/extension.json",
   "name": "code-pulse",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "title": "CodePulse",
-  "description": "Monitor Claude Code and Codex CLI task states from the macOS menu bar.",
+  "description": "Monitor Claude Code and Codex CLI task states across macOS and Windows.",
   "icon": "codepulse-icon-v2.png",
   "author": "ruqing_wang",
   "owner": "code-pulse",
   "access": "private",
+  "platforms": [
+    "macOS",
+    "Windows"
+  ],
   "license": "MIT",
   "commands": [
     {
       "name": "codepulse",
       "title": "CodePulse",
-      "description": "Show active Claude Code and Codex CLI sessions in the menu bar.",
+      "description": "Show active Claude Code and Codex CLI sessions at a glance.",
       "icon": "codepulse-icon-v2.png",
       "mode": "menu-bar",
       "interval": "5s"
