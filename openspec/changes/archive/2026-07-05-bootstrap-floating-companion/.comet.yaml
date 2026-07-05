@@ -17,6 +17,6 @@ verification_report: docs/superpowers/reports/2026-07-05-bootstrap-floating-comp
 branch_status: handled
 created_at: 2026-07-05
 verified_at: 2026-07-05
-archived: false
+archived: true
 handoff_context: openspec/changes/bootstrap-floating-companion/.comet/handoff/design-context.json
 handoff_hash: c5daa94181f58ca7e717d6e762df12a283a4c97d4343ca1d97a00459a07a38c4

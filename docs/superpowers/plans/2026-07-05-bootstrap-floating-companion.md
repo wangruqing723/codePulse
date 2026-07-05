@@ -2,6 +2,7 @@
 change: bootstrap-floating-companion
 design-doc: docs/superpowers/specs/2026-07-05-bootstrap-floating-companion-design.md
 base-ref: bda68bf22bbf97e565b83e520afdd2280f6974a1
+archived-with: 2026-07-05-bootstrap-floating-companion
 ---
 
 # Bootstrap Floating Companion Implementation Plan
@@ -24,8 +25,6 @@ base-ref: bda68bf22bbf97e565b83e520afdd2280f6974a1
 - Do not install into `/Applications` or `%LOCALAPPDATA%`.
 - Preserve the existing `强制退出 Floating Companion` action.
 - Windows bootstrap contract must exist in code and tests, but Windows artifact production remains target-platform or CI validated.
-
----
 
 ## File Structure
 

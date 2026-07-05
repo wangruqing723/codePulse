@@ -2,6 +2,8 @@
 comet_change: bootstrap-floating-companion
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-07-05-bootstrap-floating-companion
+status: final
 ---
 
 # Bootstrap Floating Companion Design
