@@ -37,6 +37,32 @@ describe("CodePulse Center companion bootstrap action", () => {
     });
   });
 
+  it("shows an in-progress toast before waiting for companion bootstrap", async () => {
+    let resolveBootstrap: (
+      result: Awaited<ReturnType<typeof bootstrapCompanion>>,
+    ) => void = () => undefined;
+    vi.mocked(bootstrapCompanion).mockReturnValue(
+      new Promise((resolve) => {
+        resolveBootstrap = resolve;
+      }),
+    );
+
+    const launch = handleLaunchCompanion({});
+    await Promise.resolve();
+
+    expect(showToast).toHaveBeenCalledWith({
+      style: "animated",
+      title: "正在安装 / 启动 Floating Companion",
+      message: "正在检查本地安装；如未安装会下载 release artifact。",
+    });
+
+    resolveBootstrap({
+      status: "launched",
+      path: "/raycast/support/companion/0.1.3/darwin-arm64/CodePulse Companion.app",
+    });
+    await launch;
+  });
+
   it.each([
     [
       { status: "release-unavailable", message: "manifest" },

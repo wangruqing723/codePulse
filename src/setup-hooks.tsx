@@ -67,6 +67,12 @@ export async function handleLaunchCompanion(
     "companionReleaseTag" | "companionManifestUrl"
   > = {},
 ): Promise<void> {
+  await showToast({
+    style: Toast.Style.Animated,
+    title: "正在安装 / 启动 Floating Companion",
+    message: "正在检查本地安装；如未安装会下载 release artifact。",
+  });
+
   const result = await bootstrapCompanion({
     supportPath: environment.supportPath,
     releaseTag: preferences.companionReleaseTag,

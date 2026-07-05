@@ -7,6 +7,7 @@ export const LaunchType = {
 
 export const Toast = {
   Style: {
+    Animated: "animated",
     Success: "success",
     Failure: "failure",
   },
