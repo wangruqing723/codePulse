@@ -1,5 +1,5 @@
 workflow: full
-phase: verify
+phase: archive
 context_compression: off
 build_mode: subagent-driven-development
 build_pause: null
@@ -12,11 +12,11 @@ auto_transition: true
 base_ref: bda68bf22bbf97e565b83e520afdd2280f6974a1
 design_doc: docs/superpowers/specs/2026-07-05-bootstrap-floating-companion-design.md
 plan: docs/superpowers/plans/2026-07-05-bootstrap-floating-companion.md
-verify_result: pending
+verify_result: pass
 verification_report: docs/superpowers/reports/2026-07-05-bootstrap-floating-companion-verify.md
-branch_status: pending
+branch_status: handled
 created_at: 2026-07-05
-verified_at: null
+verified_at: 2026-07-05
 archived: false
 handoff_context: openspec/changes/bootstrap-floating-companion/.comet/handoff/design-context.json
 handoff_hash: c5daa94181f58ca7e717d6e762df12a283a4c97d4343ca1d97a00459a07a38c4
