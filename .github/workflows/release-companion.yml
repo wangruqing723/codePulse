@@ -1,0 +1,79 @@
+name: Release Companion
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "codepulse-companion-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release-macos:
+    name: Build and publish macOS companion
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          TAG="codepulse-companion-v${VERSION}"
+
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" && "${GITHUB_REF_NAME}" != "${TAG}" ]]; then
+            echo "Pushed tag ${GITHUB_REF_NAME} does not match package.json version ${VERSION} (${TAG})." >&2
+            exit 1
+          fi
+
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build release artifacts
+        run: npm run companion:release:mac
+
+      - name: Verify release artifacts
+        shell: bash
+        run: |
+          test -f release/CodePulse-Companion-darwin-arm64.zip
+          test -f release/codepulse-companion-manifest.json
+          node -e "const fs=require('fs'); const manifest=JSON.parse(fs.readFileSync('release/codepulse-companion-manifest.json','utf8')); if (!manifest.artifacts?.['darwin-arm64']?.url || !manifest.artifacts['darwin-arm64'].sha256) process.exit(1);"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        shell: bash
+        run: |
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Release ${TAG} already exists."
+          else
+            gh release create "${TAG}" \
+              --title "CodePulse Companion ${VERSION}" \
+              --notes "CodePulse Companion release ${VERSION}." \
+              --latest=false
+          fi
+
+      - name: Upload companion artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          gh release upload "${TAG}" \
+            release/CodePulse-Companion-darwin-arm64.zip \
+            release/codepulse-companion-manifest.json \
+            --clobber
