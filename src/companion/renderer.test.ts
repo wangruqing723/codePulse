@@ -35,6 +35,17 @@ function createModel(overrides: Partial<FloatingViewModel>): FloatingViewModel {
             value: "/tmp/project",
           },
         ],
+        displayStatus: "running",
+        statusTone: "green",
+        contextText: "等待用户确认",
+        durationText: "02:14",
+        displayPath: "~/project",
+        fullPath: "/tmp/project",
+        copyAction: {
+          id: "copy-local-path",
+          label: "复制路径",
+          value: "/tmp/project",
+        },
       },
     ],
     ...overrides,
@@ -48,14 +59,21 @@ describe("companion renderer html", () => {
     const html = renderFloatingHtml?.(createModel({}));
 
     expect(html).toContain("运行中 1 个");
-    expect(html).toContain('data-action="hide"');
+    expect(html).toContain('data-action="pin"');
     expect(html).toContain('data-action="minimize"');
-    expect(html).toContain('data-action="force-exit"');
-    expect(html).toContain('aria-label="隐藏"');
+    expect(html).toContain('data-action="close"');
+    expect(html).not.toContain('data-action="hide"');
+    expect(html).not.toContain('data-action="force-exit"');
+    expect(html).toContain('aria-label="置顶"');
     expect(html).toContain('aria-label="最小化"');
-    expect(html).toContain('aria-label="强制退出"');
+    expect(html).toContain('aria-label="关闭"');
+    expect(html).toContain('class="status-dot"');
+    expect(html).toContain('class="session-path-row"');
+    expect(html).toContain('title="/tmp/project"');
     expect(html).toContain("修复 companion");
     expect(html).toContain("复制路径");
+    expect(html).toContain("等待用户确认");
+    expect(html).toContain("02:14");
   });
 
   it("renders compact icon-only window actions", async () => {
@@ -63,12 +81,12 @@ describe("companion renderer html", () => {
 
     const html = renderFloatingHtml?.(createModel({}));
 
-    expect(html).toContain("window-icon window-icon-hide");
-    expect(html).toContain("window-icon window-icon-minimize");
-    expect(html).toContain("window-icon window-icon-force-exit");
-    expect(html).not.toContain('data-action="hide">隐藏</button>');
+    expect(html).toContain('aria-hidden="true">📌</span>');
+    expect(html).toContain('aria-hidden="true">−</span>');
+    expect(html).toContain('aria-hidden="true">×</span>');
+    expect(html).not.toContain('data-action="pin">置顶</button>');
     expect(html).not.toContain('data-action="minimize">最小化</button>');
-    expect(html).not.toContain('data-action="force-exit">强制退出</button>');
+    expect(html).not.toContain('data-action="close">关闭</button>');
   });
 
   it("handles clicks on nested window action icons", async () => {
@@ -92,7 +110,7 @@ describe("companion renderer html", () => {
         },
       ),
     };
-    const button = new FakeElement({ action: "hide" });
+    const button = new FakeElement({ action: "pin" });
     const icon = new FakeElement({}, button);
 
     vi.stubGlobal("HTMLElement", FakeElement);
@@ -107,7 +125,7 @@ describe("companion renderer html", () => {
     );
     listeners.get("click")?.({ target: icon });
 
-    expect(requestWindowAction.mock.calls).toEqual([["hide"]]);
+    expect(requestWindowAction.mock.calls).toEqual([["pin"]]);
     vi.unstubAllGlobals();
   });
 
@@ -208,7 +226,7 @@ describe("companion renderer hover intent", () => {
     ) as
       | {
           onPointerLeave?: () => void;
-          onWindowAction?: (action: "hide" | "minimize") => void;
+          onWindowAction?: (action: "pin" | "minimize" | "close") => void;
         }
       | undefined;
 
@@ -220,7 +238,7 @@ describe("companion renderer hover intent", () => {
     vi.useRealTimers();
   });
 
-  it("requests force-exit as an immediate window action", async () => {
+  it("requests close as an immediate window action", async () => {
     vi.useFakeTimers();
     const { createHoverIntentController } = await loadRendererModule();
     const requestWindowAction = vi.fn();
@@ -233,15 +251,15 @@ describe("companion renderer hover intent", () => {
     ) as
       | {
           onPointerLeave?: () => void;
-          onWindowAction?: (action: "hide" | "minimize" | "force-exit") => void;
+          onWindowAction?: (action: "pin" | "minimize" | "close") => void;
         }
       | undefined;
 
     hover?.onPointerLeave?.();
-    hover?.onWindowAction?.("force-exit");
+    hover?.onWindowAction?.("close");
     vi.advanceTimersByTime(180);
 
-    expect(requestWindowAction.mock.calls).toEqual([["force-exit"]]);
+    expect(requestWindowAction.mock.calls).toEqual([["close"]]);
     vi.useRealTimers();
   });
 
@@ -258,7 +276,7 @@ describe("companion renderer hover intent", () => {
     ) as
       | {
           onPointerLeave?: () => void;
-          onWindowAction?: (action: "hide" | "minimize") => void;
+          onWindowAction?: (action: "pin" | "minimize" | "close") => void;
         }
       | undefined;
 
