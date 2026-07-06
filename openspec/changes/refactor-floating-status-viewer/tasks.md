@@ -1,7 +1,7 @@
 ## 1. View Model And State Semantics
 
-- [ ] 1.1 Add focused view-model tests for status summary ordering, four-state card display, context text, duration text, and idle exclusion.
-- [ ] 1.2 Update `src/companion/view-model.ts` to expose UI-ready summary/card fields and Windows UNC-first single copy action.
+- [x] 1.1 Add focused view-model tests for status summary ordering, four-state card display, context text, duration text, and idle exclusion.
+- [x] 1.2 Update `src/companion/view-model.ts` to expose UI-ready summary/card fields and Windows UNC-first single copy action.
 
 ## 2. Window Actions
 

@@ -50,7 +50,7 @@ base-ref: 0a922ca74ac1d1f23fe6bb56e5158530ebe567ef
 - Consumes: `SessionRecord`, `StateSnapshot`, `toWslUncPath`.
 - Produces: `FloatingSessionViewModel.displayStatus`, `statusTone`, `contextText`, `durationText`, `displayPath`, `fullPath`, `copyAction`; `FloatingViewModel.summaryText` or existing `text` as aggregate summary.
 
-- [ ] **Step 1: Write failing view-model tests**
+- [x] **Step 1: Write failing view-model tests**
 
 Add tests that assert the new contract. Use existing `createSession()` and `createSnapshot()` helpers.
 
@@ -121,13 +121,13 @@ it("adds context, duration, and shortened path fields to cards", async () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/companion/view-model.test.ts`
 
 Expected: FAIL because `displayStatus`, `statusTone`, `contextText`, `durationText`, `displayPath`, `fullPath`, single UNC-first copy action, and aggregate summary are not implemented yet.
 
-- [ ] **Step 3: Implement view-model fields**
+- [x] **Step 3: Implement view-model fields**
 
 Update `FloatingViewModelContext` to accept an optional `now?: Date`, add display status/tone helpers, filter idle cards, and derive display fields. Preserve existing `status`, `count`, and `text` fields for compatibility.
 
@@ -161,13 +161,13 @@ return [
 
 Use `new Date(context.now ?? snapshot?.generatedAt ?? Date.now())` for duration tests. Generate `displayPath` with home-aware middle truncation; map `/Users/<name>/...` to `~/.../<last-two-or-three-segments>` when path is long.
 
-- [ ] **Step 4: Run focused view-model tests**
+- [x] **Step 4: Run focused view-model tests**
 
 Run: `npx vitest run src/companion/view-model.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 5: Update OpenSpec task checkbox**
+- [x] **Step 5: Update OpenSpec task checkbox**
 
 Check off:
 
