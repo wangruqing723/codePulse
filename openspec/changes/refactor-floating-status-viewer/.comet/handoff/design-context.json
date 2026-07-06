@@ -1,0 +1,14 @@
+{
+  "change": "refactor-floating-status-viewer",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "d9f879c83bcf558eee6aadce6b2a53ba264277e50ef59c0a769e251be954b81b",
+  "files": [
+    { "path": "openspec/changes/refactor-floating-status-viewer/proposal.md", "sha256": "d204e91684fb068da1a0964d24b6ca55121b72748e8d27a63d34443dc72be972" },
+    { "path": "openspec/changes/refactor-floating-status-viewer/design.md", "sha256": "cf284f7c3b16958e7e0c7be3c525943864c6e5105b9a92ff5298615df2f28bca" },
+    { "path": "openspec/changes/refactor-floating-status-viewer/tasks.md", "sha256": "5336aee92c45905f1f069f1c433b6e11679657eb80ffd699e1b54d765d195fae" },
+    { "path": "openspec/changes/refactor-floating-status-viewer/specs/wsl2-monitoring/spec.md", "sha256": "1db2865bddbfc095582902ab4b7e05fa8c3e18986df233434451e1435b8c5a8f" }
+  ]
+}
