@@ -63,6 +63,18 @@ Fresh commands run in verify phase:
 
 Build-stage final review found 3 Important issues and 1 Minor issue. They were fixed in `137b8bc`, then re-reviewed; re-review reported all original findings resolved and no new Critical or Important issue.
 
+## Branch Handling
+
+- User selected finishing option 1: merge back locally.
+- Merged `feature/20260706/refactor-floating-status-viewer` into `dev` with `git merge --no-ff`.
+- Re-ran validation on merged `dev`:
+  - `openspec validate refactor-floating-status-viewer`: PASS.
+  - `git diff --check`: PASS.
+  - `npm test`: PASS, 17 test files and 127 tests passed.
+  - `npm run lint`: PASS.
+  - `npm run build`: PASS.
+  - `npm run companion:build`: PASS.
+
 ## Residual Risk
 
 - Electron GUI visual inspection remains deferred. Static build artifacts exist, and renderer/CSS/test coverage verifies the expected structure and classes, but a human should still run `npm run companion:dev` in a GUI-capable environment to visually confirm button order, pulse animation, error border, path truncation, and context/duration overlap.
