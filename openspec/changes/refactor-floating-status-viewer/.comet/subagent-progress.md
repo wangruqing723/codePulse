@@ -30,5 +30,5 @@
   - src/companion/view-model.ts
 - RED evidence: n/a for verification task
 - GREEN evidence: focused tests, full test, lint, build, companion build, and diff check passed after formatting fix. GUI visual inspection remains deferred and documented.
-- Review: standard final review pending
+- Review: standard final review returned 3 Important findings and 1 Minor finding; fixes committed in 137b8bc, coordinator verification passed, and re-review approved with no remaining Critical/Important issues.
 - Review/fix round: 1
