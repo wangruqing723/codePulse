@@ -7,13 +7,13 @@ subagent_dispatch: confirmed
 tdd_mode: tdd
 review_mode: standard
 isolation: branch
-verify_mode: null
+verify_mode: full
 auto_transition: true
 base_ref: 0a922ca74ac1d1f23fe6bb56e5158530ebe567ef
 design_doc: docs/superpowers/specs/2026-07-06-refactor-floating-status-viewer-design.md
 plan: docs/superpowers/plans/2026-07-06-refactor-floating-status-viewer.md
 verify_result: pending
-verification_report: null
+verification_report: docs/superpowers/reports/2026-07-06-refactor-floating-status-viewer-verify.md
 branch_status: pending
 created_at: 2026-07-06
 verified_at: null
