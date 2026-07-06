@@ -2,6 +2,7 @@
 change: refactor-floating-status-viewer
 design-doc: docs/superpowers/specs/2026-07-06-refactor-floating-status-viewer-design.md
 base-ref: 0a922ca74ac1d1f23fe6bb56e5158530ebe567ef
+archived-with: 2026-07-06-refactor-floating-status-viewer
 ---
 
 # Refactor Floating Status Viewer Implementation Plan
@@ -25,6 +26,7 @@ base-ref: 0a922ca74ac1d1f23fe6bb56e5158530ebe567ef
 - Raycast Center / CLI recovery 能力可保留，但悬浮窗内不能显示 `force-exit` 或终止类入口。
 - 实际 `git commit` 需等待用户明确确认；计划中的 commit 步骤视为检查点和暂存边界。
 
+archived-with: 2026-07-06-refactor-floating-status-viewer
 ---
 
 ## File Structure

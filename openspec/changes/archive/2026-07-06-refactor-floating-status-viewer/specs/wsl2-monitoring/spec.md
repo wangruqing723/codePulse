@@ -80,6 +80,8 @@
 - **WHEN** 用户点击关闭按钮内部的图标元素
 - **THEN** companion 触发 `close` 窗口动作
 
+## ADDED Requirements
+
 ### Requirement: Floating companion 会话卡片展示
 系统 SHALL 以只读卡片展示每个可见会话，并使用固定状态色表达运行中、已完成、错误和等待确认四种状态。
 

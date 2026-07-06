@@ -2,6 +2,8 @@
 comet_change: refactor-floating-status-viewer
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-07-06-refactor-floating-status-viewer
+status: final
 ---
 
 # Refactor Floating Status Viewer Design
