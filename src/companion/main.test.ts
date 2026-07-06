@@ -285,6 +285,32 @@ describe("companion main window display flow", () => {
     expect(processControlMocks.killCompanionProcess).toHaveBeenCalledTimes(1);
   });
 
+  it("toggles always-on-top when pin window action is requested", async () => {
+    const mainModule = await import("./main");
+    const fakeWindow = {
+      isAlwaysOnTop: vi.fn(() => true),
+      setAlwaysOnTop: vi.fn(),
+    };
+
+    mainModule.__testing__.resetState();
+    mainModule.__testing__.setMainWindow(fakeWindow as never);
+    mainModule.__testing__.handleWindowAction("pin" as never);
+
+    expect(fakeWindow.setAlwaysOnTop).toHaveBeenCalledWith(false);
+  });
+
+  it("closes the companion window without invoking force-exit recovery", async () => {
+    const mainModule = await import("./main");
+    const fakeWindow = { close: vi.fn() };
+
+    mainModule.__testing__.resetState();
+    mainModule.__testing__.setMainWindow(fakeWindow as never);
+    mainModule.__testing__.handleWindowAction("close" as never);
+
+    expect(fakeWindow.close).toHaveBeenCalledTimes(1);
+    expect(processControlMocks.killCompanionProcess).not.toHaveBeenCalled();
+  });
+
   it("cancels pending dock hide when minimizing a revealed docked window", async () => {
     vi.useFakeTimers();
     const mainModule = await import("./main");
