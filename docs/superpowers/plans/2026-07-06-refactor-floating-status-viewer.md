@@ -507,7 +507,7 @@ Prepare checkpoint: `git diff -- src/companion/styles.css src/companion/renderer
 - Consumes: completed Tasks 1-4.
 - Produces: all OpenSpec task checkboxes complete and verification evidence ready for Comet build guard.
 
-- [ ] **Step 1: Run focused companion tests**
+- [x] **Step 1: Run focused companion tests**
 
 Run:
 
@@ -517,13 +517,13 @@ npx vitest run src/companion/view-model.test.ts src/companion/renderer.test.ts s
 
 Expected: PASS.
 
-- [ ] **Step 2: Run project tests if focused tests pass**
+- [x] **Step 2: Run project tests if focused tests pass**
 
 Run: `npm test`
 
 Expected: PASS.
 
-- [ ] **Step 3: Run lint, Raycast build, and companion build**
+- [x] **Step 3: Run lint, Raycast build, and companion build**
 
 Run:
 
@@ -535,7 +535,7 @@ npm run companion:build
 
 Expected: all PASS.
 
-- [ ] **Step 4: Visual inspection**
+- [x] **Step 4: Visual inspection**
 
 If GUI launch is available, run `npm run companion:dev` and inspect:
 
@@ -549,7 +549,7 @@ If GUI launch is available, run `npm run companion:dev` and inspect:
 
 If GUI launch is blocked by sandbox or desktop constraints, record that platform visual inspection is deferred and include the exact blocker in the final verification summary.
 
-- [ ] **Step 5: Mark verification tasks**
+- [x] **Step 5: Mark verification tasks**
 
 Check off:
 
@@ -559,7 +559,7 @@ Check off:
 - [x] 4.3 Launch or otherwise visually inspect the companion layout and record any unverified platform-specific residual risk.
 ```
 
-- [ ] **Step 6: Final diff review before asking for commit confirmation**
+- [x] **Step 6: Final diff review before asking for commit confirmation**
 
 Run:
 

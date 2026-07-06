@@ -10,20 +10,25 @@
 - Task 1: complete (commits 605ac55 + b3c5262, RED/GREEN evidence recorded, coordinator checkoff passed)
 - Task 2: complete (commits 3e0f9d7 + 6c3a745, RED/GREEN evidence recorded, coordinator checkoff passed)
 - Task 3: complete (commits 40cd924 + d11a0c2, RED/GREEN evidence recorded, coordinator checkoff passed)
+- Task 4: complete (commits 588b250 + 383ede5, smoke evidence recorded, coordinator checkoff passed)
 
 ## Current Task
 
-- Plan task: Task 4: CSS Visual Polish
+- Plan task: Task 5: Verification And Build Closure
 - OpenSpec task mapping:
-- 3.2 Refactor `src/companion/styles.css` for dark status viewer polish, four-tone state colors, running pulse animation, error border, path truncation, and stable compact controls.
+- 4.1 Run focused companion unit tests covering view-model, renderer, and main window actions.
+- 4.2 Run `npm run lint`, `npm run build`, and `npm run companion:build`.
+- 4.3 Launch or otherwise visually inspect the companion layout and record any unverified platform-specific residual risk.
 - Stage: done
-- Brief: /Users/wyong/docker/codePulse/.superpowers/sdd/task-4-brief.md
-- Report: /Users/wyong/docker/codePulse/.superpowers/sdd/task-4-report.md
-- Implementer commit: 588b250 style: polish companion status cards
+- Brief: /Users/wyong/docker/codePulse/.superpowers/sdd/task-5-brief.md
+- Report: /Users/wyong/docker/codePulse/.superpowers/sdd/task-5-report.md
+- Implementer commit: Task 5 verification report plus formatting fix commit 40d13c1 style: format companion refactor files
 - Changed files:
-  - src/companion/styles.css
-  - .superpowers/sdd/task-4-report.md
-- RED evidence: `rg -n "force-exit|window-icon-hide|session-status|copy-actions" src/companion` found old visible CSS selectors before implementation.
-- GREEN evidence: `npx vitest run src/companion/renderer.test.ts src/companion/view-model.test.ts` passed with 18 tests; coordinator rerun also passed with 18 tests. Smoke scan now only finds allowed recovery IPC and negative test assertions.
-- Review: standard final review only; per-task coordinator checkoff passed
-- Review/fix round: 0
+  - .superpowers/sdd/task-5-report.md
+  - src/companion/renderer.tsx
+  - src/companion/view-model.test.ts
+  - src/companion/view-model.ts
+- RED evidence: n/a for verification task
+- GREEN evidence: focused tests, full test, lint, build, companion build, and diff check passed after formatting fix. GUI visual inspection remains deferred and documented.
+- Review: standard final review pending
+- Review/fix round: 1

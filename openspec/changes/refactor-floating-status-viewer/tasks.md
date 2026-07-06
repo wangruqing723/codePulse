@@ -15,6 +15,6 @@
 
 ## 4. Verification
 
-- [ ] 4.1 Run focused companion unit tests covering view-model, renderer, and main window actions.
-- [ ] 4.2 Run `npm run lint`, `npm run build`, and `npm run companion:build`.
-- [ ] 4.3 Launch or otherwise visually inspect the companion layout and record any unverified platform-specific residual risk.
+- [x] 4.1 Run focused companion unit tests covering view-model, renderer, and main window actions.
+- [x] 4.2 Run `npm run lint`, `npm run build`, and `npm run companion:build`.
+- [x] 4.3 Launch or otherwise visually inspect the companion layout and record any unverified platform-specific residual risk.
