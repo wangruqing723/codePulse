@@ -283,7 +283,7 @@ Prepare checkpoint: `git diff -- src/companion/preload.ts src/companion/main.ts 
 - Consumes: Task 1 `FloatingSessionViewModel` UI fields and Task 2 window actions.
 - Produces: Header buttons `pin`, `minimize`, `close`; card markup with status dot, title, path row, one copy action, context row, duration slot.
 
-- [ ] **Step 1: Update renderer tests to new UI contract**
+- [x] **Step 1: Update renderer tests to new UI contract**
 
 Change existing tests that expect `hide` / `force-exit` so they expect:
 
@@ -303,13 +303,13 @@ expect(html).toContain('title="/tmp/project"');
 
 Update nested icon click test so the fake button action is `pin` and expected call is `[["pin"]]`.
 
-- [ ] **Step 2: Run renderer test to verify it fails**
+- [x] **Step 2: Run renderer test to verify it fails**
 
 Run: `npx vitest run src/companion/renderer.test.ts`
 
 Expected: FAIL because markup still renders `hide` and `force-exit` and old card layout.
 
-- [ ] **Step 3: Refactor window action constants**
+- [x] **Step 3: Refactor window action constants**
 
 Replace `WINDOW_ACTIONS` with:
 
@@ -323,7 +323,7 @@ const WINDOW_ACTIONS = [
 
 Use icon text or CSS classes consistently. If icon text is used, keep `aria-hidden="true"` on icon span and labels on the button.
 
-- [ ] **Step 4: Refactor card HTML**
+- [x] **Step 4: Refactor card HTML**
 
 Render each card as:
 
@@ -347,7 +347,7 @@ Render each card as:
 
 Use escaped values from view-model. When `copyAction` is missing, render a low-contrast `无路径` placeholder without adding another action.
 
-- [ ] **Step 5: Update click handling**
+- [x] **Step 5: Update click handling**
 
 Allow only `pin`, `minimize`, and `close` as visible window actions:
 
@@ -360,13 +360,13 @@ if (action === "pin" || action === "minimize" || action === "close") {
 
 Keep hover-enter / hover-leave internal to `createHoverIntentController`.
 
-- [ ] **Step 6: Run focused renderer tests**
+- [x] **Step 6: Run focused renderer tests**
 
 Run: `npx vitest run src/companion/renderer.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 7: Update OpenSpec task checkbox**
+- [x] **Step 7: Update OpenSpec task checkbox**
 
 Check off:
 
