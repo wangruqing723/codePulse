@@ -2,27 +2,31 @@
 
 ## Scope
 
-- Worktree: `/Users/wyong/docker/codePulse/.worktrees/bootstrap-floating-companion`
+- Worktree: `/Users/wyong/docker/codePulse`
+- Branch: `feature/20260706/refactor-floating-status-viewer`
 - Brief: `.superpowers/sdd/task-5-brief.md`
-- Write scope honored: no implementation files were modified.
+- Role constraint honored: no business source, docs, or OpenSpec task files were modified.
+- Pre-existing working tree change left untouched: `openspec/changes/refactor-floating-status-viewer/.comet/subagent-progress.md`.
 
 ## Command Results
 
-### 1. Focused Tests
+### 1. Focused Companion Tests
 
 Command:
 
 ```bash
-npm test -- src/companion/launch-control.test.ts src/setup-hooks.test.ts
+npx vitest run src/companion/view-model.test.ts src/companion/renderer.test.ts src/companion/main.test.ts
 ```
 
 Result: PASS
 
 Evidence:
 
-- `src/companion/launch-control.test.ts`: 8 tests passed.
-- `src/setup-hooks.test.ts`: 5 tests passed.
-- Total: 2 test files passed, 13 tests passed.
+- `src/companion/renderer.test.ts`: 10 tests passed.
+- `src/companion/view-model.test.ts`: 8 tests passed.
+- `src/companion/main.test.ts`: 11 tests passed.
+- Total: 3 test files passed, 29 tests passed.
+- Note: Vitest printed the Vite CJS Node API deprecation warning; it did not fail the run.
 
 ### 2. Full Test Suite
 
@@ -36,48 +40,52 @@ Result: PASS
 
 Evidence:
 
-- Total: 17 test files passed, 116 tests passed.
+- Total: 17 test files passed, 122 tests passed.
+- Note: Vitest printed the Vite CJS Node API deprecation warning; it did not fail the run.
 
 ### 3. Lint
 
 Command:
 
 ```bash
-zsh -lc 'source ~/.nvm/nvm.sh && nvm use --silent && node -v && npm run lint'
+npm run lint
 ```
 
-Result: PASS after blocker fix
+Result: FAIL
 
 Evidence:
 
 ```text
-v22.22.2
 ready  - validate package.json file
 ready  - validate extension icons
 ready  - run ESLint
-ready  - run Prettier 3.9.4
+error  - run Prettier 3.9.4
+/Users/wyong/docker/codePulse/src/companion/renderer.tsx
+  error  Code style issues found. Please run Prettier 3.9.4 (ray lint --fix).
+/Users/wyong/docker/codePulse/src/companion/view-model.test.ts
+  error  Code style issues found. Please run Prettier 3.9.4 (ray lint --fix).
+/Users/wyong/docker/codePulse/src/companion/view-model.ts
+  error  Code style issues found. Please run Prettier 3.9.4 (ray lint --fix).
 ```
 
 Notes:
 
-- Initial lint failed on Prettier formatting for `src/companion/launch-control.ts`.
-- Root cause: Task 2 helper implementation needed Raycast Prettier formatting.
-- Fix: ran `npm run fix-lint`; that formatted the file, then failed only on sandboxed Raycast network checks. Re-running lint under the project Node version passed.
+- This verification agent did not run `ray lint --fix` or edit the source files because Task 5 is constrained to verification/reporting only.
+- This is the only failing required command in this run.
 
 ### 4. Raycast Extension Build
 
 Command:
 
 ```bash
-zsh -lc 'source ~/.nvm/nvm.sh && nvm use --silent && node -v && npm run build'
+npm run build
 ```
 
-Result: PASS after blocker fix
+Result: PASS
 
 Evidence:
 
 ```text
-v22.22.2
 info  - entry points ["src/codepulse.tsx","src/setup-hooks.tsx"]
 info  - compiled entry points
 info  - generated extension's TypeScript definitions
@@ -85,18 +93,12 @@ info  - checked TypeScript
 ready  - built extension successfully
 ```
 
-Notes:
-
-- Initial build failed because the worktree had only a partial `node_modules` cache and no local TypeScript install.
-- Root cause: the project-local worktree started without devDependencies installed.
-- Fix: ran `npm install --include=dev --prefer-offline --no-audit --no-fund`, then re-ran build under Node v22.22.2.
-
 ### 5. Companion Build
 
 Command:
 
 ```bash
-zsh -lc 'source ~/.nvm/nvm.sh && nvm use --silent && node -v && npm run companion:build'
+npm run companion:build
 ```
 
 Result: PASS
@@ -104,44 +106,135 @@ Result: PASS
 Evidence:
 
 ```text
-> code-pulse@0.1.3 companion:build
+> code-pulse@0.1.5 companion:build
 > node scripts/build-companion.mjs
 ```
 
-Exit code: 0
+Exit code: 0.
 
-## OpenSpec Tasks Sync
+### 6. Whitespace Check
 
-Result: UPDATED
-
-Reason:
-
-- After focused tests, full tests, lint, build, and companion build passed, every task in `openspec/changes/bootstrap-floating-companion/tasks.md` was checked off.
-
-## Comet Build Guard
-
-Command requested:
+Command:
 
 ```bash
-COMET_ENV="${COMET_ENV:-$(find . "$HOME"/.*/skills "$HOME/.config" "$HOME/.gemini" -path '*/comet/scripts/comet-env.sh' -type f -print -quit 2>/dev/null)}"; . "$COMET_ENV"; "$COMET_BASH" "$COMET_GUARD" bootstrap-floating-companion build --apply
+git diff --check
 ```
 
 Result: PASS
 
-Reason:
+Evidence:
 
-- The controller ran the guard after resolving the lint/build blockers.
+- Command exited 0 with no output.
+
+### 7. Diff Stat
+
+Command:
+
+```bash
+git diff --stat
+```
+
+Result: PASS / informational
 
 Evidence:
 
 ```text
-ALL CHECKS PASSED — ready for next phase
-[TRANSITION] build-complete
-[APPLY] .comet.yaml updated: phase=verify, verify_result=pending
+ .../.comet/subagent-progress.md                    | 25 +++++++++++-----------
+ 1 file changed, 13 insertions(+), 12 deletions(-)
 ```
 
-## Concerns
+Notes:
 
-- Resolved: `npm run lint` passed after formatting.
-- Resolved: `npm run build` passed after installing worktree devDependencies and using Node v22.22.2.
-- Windows bootstrap contract is present in tests/code from prior tasks, but Windows artifact production remains target-platform/CI validation risk as required by the brief.
+- The reported diff was pre-existing coordination-layer state and was not touched by this verification agent.
+
+### 8. Companion Source Diff Review
+
+Command:
+
+```bash
+git diff -- src/companion/view-model.ts src/companion/renderer.tsx src/companion/preload.ts src/companion/main.ts src/companion/styles.css
+```
+
+Result: PASS / no current working-tree source diff
+
+Evidence:
+
+- Command exited 0 with no output.
+
+## Visual Inspection
+
+Status: GUI visual inspection deferred.
+
+Reason:
+
+- The brief requires launching Electron GUI only if it can be done safely.
+- Current instruction explicitly says not to request additional permissions.
+- This verification subagent cannot safely perform or attest to desktop GUI observation in the current non-interactive validation path without launching `npm run companion:dev` and manually inspecting the Electron window.
+
+Unverified visual checklist:
+
+- Header buttons appear in order Pin / Minimize / Close.
+- Header summary shows multiple status counts when applicable.
+- Running dot pulses green.
+- Error card border is subtly red.
+- Long paths truncate and expose full path via `title`.
+- Copy path is the only card action and sits on the path row.
+- Context line and duration do not overlap at the current companion size.
+
+## Residual Risks
+
+- Required verification is not fully green because `npm run lint` fails on Prettier formatting in three companion files.
+- Platform visual inspection remains deferred; layout polish should be checked in a GUI-capable environment before closure.
+- `task-5-report.md` is tracked in this checkout even though the task expected report-only changes to be gitignored. This report file is the only file modified by this verification agent.
+
+## Summary
+
+Status: DONE_WITH_CONCERNS
+
+Passing:
+
+- Focused companion tests.
+- Full test suite.
+- Raycast extension build.
+- Companion build.
+- `git diff --check`.
+- `git diff --stat` captured current diff scope.
+- Companion source targeted diff is empty.
+
+Failing / deferred:
+
+- `npm run lint` fails on Prettier formatting.
+- GUI visual inspection deferred.
+
+## Formatting Fix Verification
+
+Timestamp: 2026-07-06 21:34:18 CST
+
+Scope:
+
+- `src/companion/renderer.tsx`
+- `src/companion/view-model.test.ts`
+- `src/companion/view-model.ts`
+
+RED:
+
+- `npx prettier --check src/companion/renderer.tsx src/companion/view-model.test.ts src/companion/view-model.ts`
+- Result: FAIL, reported Prettier warnings for exactly the three scoped files.
+
+Fix:
+
+- `npx prettier --write src/companion/renderer.tsx src/companion/view-model.test.ts src/companion/view-model.ts`
+- Result: PASS, formatted only the three scoped files.
+
+GREEN:
+
+- `npx prettier --check src/companion/renderer.tsx src/companion/view-model.test.ts src/companion/view-model.ts`
+- Result: PASS, all matched files use Prettier code style.
+- `npm run lint`
+- Result: PASS, `ray lint` completed package/icon/ESLint/Prettier validation.
+- `npx vitest run src/companion/view-model.test.ts src/companion/renderer.test.ts src/companion/main.test.ts`
+- Result: PASS, 3 test files and 29 tests passed.
+- `git diff --check`
+- Result: PASS, no whitespace errors.
+
+Status after fix: DONE

@@ -143,11 +143,16 @@ describe("floating companion view model", () => {
           updatedAt: "2026-07-03T12:00:00.000Z",
         }),
       ]),
-      { platform: "darwin", now: new Date("2026-07-03T12:02:14.000Z") } as never,
+      {
+        platform: "darwin",
+        now: new Date("2026-07-03T12:02:14.000Z"),
+      } as never,
     );
 
     expect(model?.sessions[0]?.displayPath).toBe("~/.../my/plugin-todolist");
-    expect(model?.sessions[0]?.fullPath).toContain("/Users/wyong/docker/codePulse");
+    expect(model?.sessions[0]?.fullPath).toContain(
+      "/Users/wyong/docker/codePulse",
+    );
     expect(model?.sessions[0]?.contextText).toBeTruthy();
     expect(model?.sessions[0]?.durationText).toBe("02:14");
   });

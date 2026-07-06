@@ -49,7 +49,8 @@ function escapeHtml(value: string): string {
 function renderPathRow(session: FloatingSessionViewModel): string {
   const copyAction = session.copyAction ?? session.copyActions[0];
   const fullPath = session.fullPath ?? copyAction?.value ?? session.session.cwd;
-  const displayPath = session.displayPath ?? fullPath ?? session.session.projectName;
+  const displayPath =
+    session.displayPath ?? fullPath ?? session.session.projectName;
 
   if (!copyAction || !fullPath || !displayPath) {
     return `
@@ -82,7 +83,9 @@ function renderSessionCard(session: FloatingSessionViewModel): string {
     session.statusTone ??
     (displayStatus === "idle" ? "blue" : STATUS_TONE_FALLBACK[displayStatus]);
   const contextText =
-    session.contextText ?? session.session.title ?? AGENT_LABEL[session.session.agent];
+    session.contextText ??
+    session.session.title ??
+    AGENT_LABEL[session.session.agent];
   const durationText = session.durationText ?? "00:00";
 
   return `

@@ -140,7 +140,9 @@ export function statusText(model: FloatingViewModel): string {
       (session) => session.displayStatus === status,
     ).length;
 
-    return count > 0 ? [`${STATUS_ICON[status]} ${count} ${SUMMARY_LABEL[status]}`] : [];
+    return count > 0
+      ? [`${STATUS_ICON[status]} ${count} ${SUMMARY_LABEL[status]}`]
+      : [];
   });
 
   return summaries.length > 0
@@ -148,7 +150,9 @@ export function statusText(model: FloatingViewModel): string {
     : `${STATUS_LABEL[model.status]} ${model.count} 个`;
 }
 
-function displayStatusFor(session: SessionRecord): DisplaySessionStatus | undefined {
+function displayStatusFor(
+  session: SessionRecord,
+): DisplaySessionStatus | undefined {
   return session.status === "idle" ? undefined : session.status;
 }
 
