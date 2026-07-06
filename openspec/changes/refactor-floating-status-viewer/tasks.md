@@ -5,8 +5,8 @@
 
 ## 2. Window Actions
 
-- [ ] 2.1 Add focused renderer/main/preload tests for `pin`, `minimize`, and `close` actions and for removal of visible `force-exit`/`hide` controls.
-- [ ] 2.2 Update `src/companion/preload.ts` and `src/companion/main.ts` so the floating window supports pin toggle, minimize, and close while retaining non-UI recovery IPC where needed.
+- [x] 2.1 Add focused renderer/main/preload tests for `pin`, `minimize`, and `close` actions and for removal of visible `force-exit`/`hide` controls.
+- [x] 2.2 Update `src/companion/preload.ts` and `src/companion/main.ts` so the floating window supports pin toggle, minimize, and close while retaining non-UI recovery IPC where needed.
 
 ## 3. Renderer And Styling
 

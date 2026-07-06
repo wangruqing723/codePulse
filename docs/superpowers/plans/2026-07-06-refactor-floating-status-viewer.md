@@ -190,7 +190,7 @@ Prepare checkpoint: `git diff -- src/companion/view-model.ts src/companion/view-
 - Consumes: Existing `handleWindowAction`, hover actions, recovery IPC.
 - Produces: window action union containing `pin`, `minimize`, `close`, `hover-enter`, `hover-leave`; visible renderer actions limited to `pin`, `minimize`, `close`.
 
-- [ ] **Step 1: Write failing main/preload tests**
+- [x] **Step 1: Write failing main/preload tests**
 
 Add tests beside existing force-exit recovery coverage:
 
@@ -222,13 +222,13 @@ it("closes the companion window without invoking force-exit recovery", async () 
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/companion/main.test.ts`
 
 Expected: FAIL because `pin` and `close` are not supported.
 
-- [ ] **Step 3: Update preload action types**
+- [x] **Step 3: Update preload action types**
 
 Set `WindowAction` to include:
 
@@ -238,7 +238,7 @@ type WindowAction = "pin" | "minimize" | "close" | "hover-enter" | "hover-leave"
 
 Keep `forceExitCompanion()` and `companion:force-exit` send path for non-UI recovery, but remove `force-exit` routing from `requestWindowAction()`.
 
-- [ ] **Step 4: Update main action handling**
+- [x] **Step 4: Update main action handling**
 
 Update `WindowAction` in `main.ts`, add `pin` and `close` cases, retain hover cases:
 
@@ -255,13 +255,13 @@ case "close":
 
 Do not remove `ipcMain.on("companion:force-exit", ...)`; it remains recovery-only.
 
-- [ ] **Step 5: Run focused window tests**
+- [x] **Step 5: Run focused window tests**
 
 Run: `npx vitest run src/companion/main.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 6: Update OpenSpec task checkbox**
+- [x] **Step 6: Update OpenSpec task checkbox**
 
 Check off:
 
