@@ -11,7 +11,7 @@
 ## 3. Renderer And Styling
 
 - [x] 3.1 Refactor `src/companion/renderer.tsx` card markup for status dot, title, path row, ghost copy action, context row, tooltip, and duration slot.
-- [ ] 3.2 Refactor `src/companion/styles.css` for dark status viewer polish, four-tone state colors, running pulse animation, error border, path truncation, and stable compact controls.
+- [x] 3.2 Refactor `src/companion/styles.css` for dark status viewer polish, four-tone state colors, running pulse animation, error border, path truncation, and stable compact controls.
 
 ## 4. Verification
 

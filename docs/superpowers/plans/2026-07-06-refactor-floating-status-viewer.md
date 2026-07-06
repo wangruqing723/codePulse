@@ -387,7 +387,7 @@ Prepare checkpoint: `git diff -- src/companion/renderer.tsx src/companion/render
 - Consumes: Task 3 class names and data attributes.
 - Produces: Dark status viewer polish with four-tone colors, pulse animation, error border, path truncation, ghost copy button, context row, duration slot.
 
-- [ ] **Step 1: Add CSS status tokens**
+- [x] **Step 1: Add CSS status tokens**
 
 Add variables near `:root`:
 
@@ -400,7 +400,7 @@ Add variables near `:root`:
 }
 ```
 
-- [ ] **Step 2: Style new card structure**
+- [x] **Step 2: Style new card structure**
 
 Add or update:
 
@@ -436,7 +436,7 @@ Add or update:
 }
 ```
 
-- [ ] **Step 3: Add status dot and pulse**
+- [x] **Step 3: Add status dot and pulse**
 
 ```css
 .status-dot {
@@ -461,7 +461,7 @@ Add or update:
 }
 ```
 
-- [ ] **Step 4: Restyle copy and window buttons**
+- [x] **Step 4: Restyle copy and window buttons**
 
 Make copy action ghost-weight:
 
@@ -479,7 +479,7 @@ Make copy action ghost-weight:
 
 Replace old force-exit icon styles with pin/minimize/close styles or icon-text button rules.
 
-- [ ] **Step 5: Run focused tests and CSS smoke scan**
+- [x] **Step 5: Run focused tests and CSS smoke scan**
 
 Run: `npx vitest run src/companion/renderer.test.ts src/companion/view-model.test.ts`
 
@@ -487,7 +487,7 @@ Run: `rg -n "force-exit|window-icon-hide|session-status|copy-actions" src/compan
 
 Expected: tests PASS; rg should not find old visible UI class/action usage in renderer/CSS, but `companion:force-exit` may still appear in recovery IPC paths.
 
-- [ ] **Step 6: Update OpenSpec task checkbox**
+- [x] **Step 6: Update OpenSpec task checkbox**
 
 Check off:
 
