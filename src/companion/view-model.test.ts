@@ -157,6 +157,84 @@ describe("floating companion view model", () => {
     expect(model?.sessions[0]?.durationText).toBe("02:14");
   });
 
+  it("uses runningSince instead of updatedAt for active duration", async () => {
+    const { buildFloatingViewModel } = await loadViewModelModule();
+    const model = buildFloatingViewModel?.(
+      createSnapshot([
+        createSession({
+          id: "running",
+          status: "running",
+          runningSince: "2026-07-03T11:55:00.000Z",
+          lastEventAt: "2026-07-03T11:58:00.000Z",
+          updatedAt: "2026-07-03T12:00:00.000Z",
+        }),
+      ]),
+      {
+        platform: "darwin",
+        now: new Date("2026-07-03T12:02:14.000Z"),
+      },
+    );
+
+    expect(model?.sessions[0]?.durationText).toBe("07:14");
+  });
+
+  it("uses completedAt for done duration when runningSince is present", async () => {
+    const { buildFloatingViewModel } = await loadViewModelModule();
+    const model = buildFloatingViewModel?.(
+      createSnapshot([
+        createSession({
+          id: "done",
+          status: "done",
+          runningSince: "2026-07-03T11:55:00.000Z",
+          updatedAt: "2026-07-03T12:00:00.000Z",
+          completedAt: "2026-07-03T12:03:45.000Z",
+        }),
+      ]),
+      {
+        platform: "darwin",
+        now: new Date("2026-07-03T12:10:00.000Z"),
+      },
+    );
+
+    expect(model?.sessions[0]?.durationText).toBe("08:45");
+  });
+
+  it("uses waiting confirmation text when no explicit wait reason exists", async () => {
+    const { buildFloatingViewModel } = await loadViewModelModule();
+    const model = buildFloatingViewModel?.(
+      createSnapshot([
+        createSession({
+          id: "waiting",
+          status: "waiting",
+          title: "project",
+        }),
+      ]),
+      { platform: "darwin" },
+    );
+
+    expect(model?.sessions[0]?.contextText).toBe("等待用户确认");
+  });
+
+  it("middle-truncates long WSL slash paths while preserving the full path", async () => {
+    const { buildFloatingViewModel } = await loadViewModelModule();
+    const fullPath = "/home/user/very/long/project/src/tools/codePulse";
+    const model = buildFloatingViewModel?.(
+      createSnapshot([
+        createSession({
+          id: "running",
+          status: "running",
+          cwd: fullPath,
+        }),
+      ]),
+      { platform: "win32", wslDistro: "Ubuntu" },
+    );
+
+    expect(model?.sessions[0]?.displayPath).toBe(
+      "/home/user/.../tools/codePulse",
+    );
+    expect(model?.sessions[0]?.fullPath).toBe(fullPath);
+  });
+
   it("includes only local path copy action on macOS", async () => {
     const { sessionCopyActions } = await loadViewModelModule();
     const session = createSession({

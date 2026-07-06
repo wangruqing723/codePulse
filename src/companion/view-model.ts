@@ -156,15 +156,22 @@ function displayStatusFor(
   return session.status === "idle" ? undefined : session.status;
 }
 
-function formatDurationText(start: string | undefined, now: Date): string {
+function formatDurationText(
+  start: string | undefined,
+  end: Date | string,
+): string {
   const startDate = start ? new Date(start) : undefined;
+  const endDate = end instanceof Date ? end : new Date(end);
   if (!startDate || Number.isNaN(startDate.getTime())) {
+    return "00:00";
+  }
+  if (Number.isNaN(endDate.getTime())) {
     return "00:00";
   }
 
   const totalSeconds = Math.max(
     0,
-    Math.floor((now.getTime() - startDate.getTime()) / 1000),
+    Math.floor((endDate.getTime() - startDate.getTime()) / 1000),
   );
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
@@ -174,25 +181,61 @@ function formatDurationText(start: string | undefined, now: Date): string {
     .padStart(2, "0")}`;
 }
 
+function sessionDurationText(session: SessionRecord, now: Date): string {
+  if (session.status === "done") {
+    return formatDurationText(
+      session.runningSince ?? session.updatedAt,
+      session.completedAt ?? now,
+    );
+  }
+
+  if (session.status === "error") {
+    return formatDurationText(
+      session.runningSince ?? session.updatedAt,
+      session.completedAt ?? now,
+    );
+  }
+
+  return formatDurationText(
+    session.runningSince ?? session.lastEventAt ?? session.updatedAt,
+    now,
+  );
+}
+
 function displayPathFor(path: string | undefined): string | undefined {
   if (!path) {
     return undefined;
   }
 
   const homeMatch = path.match(/^\/Users\/[^/]+\/(.+)$/);
-  if (!homeMatch) {
+  if (homeMatch) {
+    const homeRelativeSegments = homeMatch[1]?.split("/").filter(Boolean) ?? [];
+    if (homeRelativeSegments.length <= 3) {
+      return `~/${homeRelativeSegments.join("/")}`;
+    }
+
+    return `~/.../${homeRelativeSegments.slice(-2).join("/")}`;
+  }
+
+  if (!path.startsWith("/")) {
     return path;
   }
 
-  const homeRelativeSegments = homeMatch[1]?.split("/").filter(Boolean) ?? [];
-  if (homeRelativeSegments.length <= 3) {
-    return `~/${homeRelativeSegments.join("/")}`;
+  const segments = path.split("/").filter(Boolean);
+  if (segments.length <= 5) {
+    return path;
   }
 
-  return `~/.../${homeRelativeSegments.slice(-2).join("/")}`;
+  return `/${segments.slice(0, 2).join("/")}/.../${segments
+    .slice(-2)
+    .join("/")}`;
 }
 
 function sessionContextText(session: SessionRecord): string {
+  if (session.status === "waiting") {
+    return "等待用户确认";
+  }
+
   if (session.errorMessage) {
     return session.errorMessage;
   }
@@ -228,7 +271,7 @@ export function buildFloatingViewModel(
         displayStatus,
         statusTone: STATUS_TONE[displayStatus],
         contextText: sessionContextText(session),
-        durationText: formatDurationText(session.updatedAt, now),
+        durationText: sessionDurationText(session, now),
         displayPath: displayPathFor(session.cwd),
         fullPath: session.cwd,
         copyAction: copyActions[0],

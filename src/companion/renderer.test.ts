@@ -164,6 +164,33 @@ describe("companion renderer html", () => {
     expect(unavailableHtml).toContain("wsl.exe exited with code 1");
     expect(emptyHtml).toContain("暂无活跃会话");
   });
+
+  it("does not render a status dot tone for legacy idle session cards", async () => {
+    const { renderFloatingHtml } = await loadRendererModule();
+
+    const html = renderFloatingHtml?.(
+      createModel({
+        sessions: [
+          {
+            session: {
+              id: "codex:idle",
+              agent: "codex",
+              status: "idle",
+              source: "passive",
+              cwd: "/tmp/project",
+              projectName: "project",
+              title: "空闲会话",
+              updatedAt: "2026-07-03T12:00:00.000Z",
+            },
+            copyActions: [],
+          } as never,
+        ],
+      }),
+    );
+
+    expect(html).not.toContain('data-status="idle"');
+    expect(html).not.toContain('class="status-dot"');
+  });
 });
 
 describe("companion renderer hover intent", () => {

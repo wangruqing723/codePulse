@@ -255,8 +255,7 @@ select {
   animation: pulse 1.5s ease-in-out infinite;
 }
 
-.status-dot[data-status="done"],
-.status-dot[data-status="idle"] {
+.status-dot[data-status="done"] {
   background: var(--status-blue);
 }
 

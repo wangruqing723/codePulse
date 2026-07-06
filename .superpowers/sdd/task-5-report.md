@@ -265,3 +265,31 @@ Visual verification update:
 - Electron GUI visual inspection remains deferred. The remaining risk is visual-only: button order, pulse animation, truncation, and context/duration overlap should be manually checked in a GUI-capable run of `npm run companion:dev`.
 
 Final verification status: PASS with GUI visual inspection deferred.
+
+## Final Review Fixes
+
+Timestamp: 2026-07-06 21:48 CST
+
+Scope:
+
+- Fixed `durationText` semantics in `src/companion/view-model.ts`:
+  - running/waiting use `runningSince ?? lastEventAt ?? updatedAt` to `now`.
+  - done uses `runningSince ?? updatedAt` to `completedAt ?? now`, prioritizing `runningSince -> completedAt`.
+  - error uses `runningSince ?? updatedAt` to `completedAt ?? now`.
+- Fixed waiting `contextText` fallback to `等待用户确认` when no explicit wait reason field exists.
+- Added generic slash-path middle truncation while preserving macOS `/Users/<name>/...` as `~/.../<tail>` and keeping `fullPath` unchanged.
+- Removed renderer/CSS `idle` card tone fallback; renderer skips non-display session statuses from legacy/manual models.
+
+TDD evidence:
+
+- RED: `npx vitest run src/companion/view-model.test.ts src/companion/renderer.test.ts` failed with 5 expected failures covering duration, waiting context, WSL path truncation, and legacy idle rendering.
+- GREEN: same command passed, 2 test files and 23 tests passed.
+
+Verification:
+
+- `npx vitest run src/companion/view-model.test.ts src/companion/renderer.test.ts` PASS, 23 tests passed.
+- `rg -n "data-status=\"idle\"|status-dot\[data-status=\"idle\"|session.status === \"idle\"" src/companion` PASS for review scope: no renderer/CSS idle tone remains; remaining matches are the expected view-model filter and test fixtures/assertions.
+- `npm run lint` PASS, `ray lint` package/icon/ESLint/Prettier validation completed.
+- `npm test` PASS, 17 test files and 127 tests passed.
+
+Status after final review fixes: DONE

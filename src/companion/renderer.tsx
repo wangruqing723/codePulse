@@ -37,6 +37,17 @@ const STATUS_TONE_FALLBACK: Record<DisplaySessionStatus, StatusTone> = {
   waiting: "yellow",
 };
 
+function isDisplaySessionStatus(
+  status: string | undefined,
+): status is DisplaySessionStatus {
+  return (
+    status === "running" ||
+    status === "done" ||
+    status === "error" ||
+    status === "waiting"
+  );
+}
+
 function escapeHtml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -79,9 +90,11 @@ function renderPathRow(session: FloatingSessionViewModel): string {
 
 function renderSessionCard(session: FloatingSessionViewModel): string {
   const displayStatus = session.displayStatus ?? session.session.status;
-  const statusTone =
-    session.statusTone ??
-    (displayStatus === "idle" ? "blue" : STATUS_TONE_FALLBACK[displayStatus]);
+  if (!isDisplaySessionStatus(displayStatus)) {
+    return "";
+  }
+
+  const statusTone = session.statusTone ?? STATUS_TONE_FALLBACK[displayStatus];
   const contextText =
     session.contextText ??
     session.session.title ??
@@ -129,7 +142,10 @@ function renderSessions(model: FloatingViewModel): string {
 
   return `
     <ul class="session-list" aria-label="会话列表">
-      ${model.sessions.map((session) => renderSessionCard(session)).join("")}
+      ${model.sessions
+        .map((session) => renderSessionCard(session))
+        .filter(Boolean)
+        .join("")}
     </ul>
   `;
 }
