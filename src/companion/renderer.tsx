@@ -1,8 +1,13 @@
 /// <reference lib="dom" />
 
-import { AGENT_LABEL, STATUS_LABEL } from "../lib/types";
+import { AGENT_LABEL } from "../lib/types";
 import type { CompanionBridge } from "./preload";
-import type { FloatingSessionViewModel, FloatingViewModel } from "./view-model";
+import type {
+  DisplaySessionStatus,
+  FloatingSessionViewModel,
+  FloatingViewModel,
+  StatusTone,
+} from "./view-model";
 
 declare global {
   interface Window {
@@ -18,14 +23,30 @@ const initialModel: FloatingViewModel = {
 };
 const HOVER_LEAVE_DELAY_MS = 260;
 const WINDOW_ACTIONS = [
-  { action: "hide", label: "隐藏", iconClass: "window-icon-hide" },
-  { action: "minimize", label: "最小化", iconClass: "window-icon-minimize" },
-  {
-    action: "force-exit",
-    label: "强制退出",
-    iconClass: "window-icon-force-exit",
-  },
+  { action: "pin", label: "置顶", icon: "📌" },
+  { action: "minimize", label: "最小化", icon: "−" },
+  { action: "close", label: "关闭", icon: "×" },
 ] as const;
+
+type WindowAction = (typeof WINDOW_ACTIONS)[number]["action"];
+
+const STATUS_TONE_FALLBACK: Record<DisplaySessionStatus, StatusTone> = {
+  running: "green",
+  done: "blue",
+  error: "red",
+  waiting: "yellow",
+};
+
+function isDisplaySessionStatus(
+  status: string | undefined,
+): status is DisplaySessionStatus {
+  return (
+    status === "running" ||
+    status === "done" ||
+    status === "error" ||
+    status === "waiting"
+  );
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -36,24 +57,72 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
-function renderCopyActions(session: FloatingSessionViewModel): string {
-  if (session.copyActions.length === 0) {
-    return '<span class="session-copy-empty">无路径</span>';
+function renderPathRow(session: FloatingSessionViewModel): string {
+  const copyAction = session.copyAction ?? session.copyActions[0];
+  const fullPath = session.fullPath ?? copyAction?.value ?? session.session.cwd;
+  const displayPath =
+    session.displayPath ?? fullPath ?? session.session.projectName;
+
+  if (!copyAction || !fullPath || !displayPath) {
+    return `
+      <div class="session-path-row">
+        <span class="session-copy-empty">无路径</span>
+      </div>
+    `;
   }
 
-  return session.copyActions
-    .map(
-      (action) => `
+  return `
+      <div class="session-path-row">
+        <p class="session-path" title="${escapeHtml(fullPath)}">
+          ${escapeHtml(displayPath)}
+        </p>
         <button
           class="copy-action"
           type="button"
-          data-copy-value="${escapeHtml(action.value)}"
+          data-copy-value="${escapeHtml(copyAction.value)}"
+          aria-label="${escapeHtml(copyAction.label)}"
         >
-          ${escapeHtml(action.label)}
+          ${escapeHtml(copyAction.label)}
         </button>
-      `,
-    )
-    .join("");
+      </div>
+  `;
+}
+
+function renderSessionCard(session: FloatingSessionViewModel): string {
+  const displayStatus = session.displayStatus ?? session.session.status;
+  if (!isDisplaySessionStatus(displayStatus)) {
+    return "";
+  }
+
+  const statusTone = session.statusTone ?? STATUS_TONE_FALLBACK[displayStatus];
+  const contextText =
+    session.contextText ??
+    session.session.title ??
+    AGENT_LABEL[session.session.agent];
+  const durationText = session.durationText ?? "00:00";
+
+  return `
+    <li
+      class="session-item"
+      data-status="${escapeHtml(displayStatus)}"
+      data-tone="${escapeHtml(statusTone)}"
+    >
+      <div class="session-heading">
+        <span
+          class="status-dot"
+          data-status="${escapeHtml(displayStatus)}"
+          aria-hidden="true"
+        ></span>
+        <p class="session-agent">${escapeHtml(AGENT_LABEL[session.session.agent])}</p>
+      </div>
+      <p class="session-title">${escapeHtml(session.session.title)}</p>
+      ${renderPathRow(session)}
+      <div class="session-context-row">
+        <p class="session-context">${escapeHtml(contextText)}</p>
+        <time class="session-duration">${escapeHtml(durationText)}</time>
+      </div>
+    </li>
+  `;
 }
 
 function renderSessions(model: FloatingViewModel): string {
@@ -74,23 +143,8 @@ function renderSessions(model: FloatingViewModel): string {
   return `
     <ul class="session-list" aria-label="会话列表">
       ${model.sessions
-        .map(
-          ({ session, copyActions }) => `
-            <li class="session-item">
-              <div class="session-meta">
-                <span class="session-agent">${escapeHtml(AGENT_LABEL[session.agent])}</span>
-                <span class="session-status">${escapeHtml(STATUS_LABEL[session.status])}</span>
-              </div>
-              <p class="session-title">${escapeHtml(session.title)}</p>
-              <p class="session-path" title="${escapeHtml(session.cwd ?? "")}">
-                ${escapeHtml(session.cwd ?? session.projectName)}
-              </p>
-              <div class="copy-actions">
-                ${renderCopyActions({ session, copyActions })}
-              </div>
-            </li>
-          `,
-        )
+        .map((session) => renderSessionCard(session))
+        .filter(Boolean)
         .join("")}
     </ul>
   `;
@@ -98,15 +152,15 @@ function renderSessions(model: FloatingViewModel): string {
 
 function renderWindowActions(): string {
   return WINDOW_ACTIONS.map(
-    ({ action, label, iconClass }) => `
+    ({ action, label, icon }) => `
       <button
         type="button"
         class="window-button"
-        data-action="${action}"
-        aria-label="${label}"
-        title="${label}"
+        data-action="${escapeHtml(action)}"
+        aria-label="${escapeHtml(label)}"
+        title="${escapeHtml(label)}"
       >
-        <span class="window-icon ${iconClass}" aria-hidden="true"></span>
+        <span class="window-icon" aria-hidden="true">${escapeHtml(icon)}</span>
       </button>
     `,
   ).join("");
@@ -139,7 +193,7 @@ function renderIntoRoot(root: HTMLElement, model: FloatingViewModel): void {
 interface HoverIntentController {
   onPointerEnter(): void;
   onPointerLeave(): void;
-  onWindowAction(action: "force-exit" | "hide" | "minimize"): void;
+  onWindowAction(action: WindowAction): void;
 }
 
 interface HoverIntentOptions {
@@ -203,7 +257,7 @@ export function bindInteractions(
 
     const actionTarget = target.closest<HTMLElement>("[data-action]");
     const action = actionTarget?.dataset.action;
-    if (action === "force-exit" || action === "hide" || action === "minimize") {
+    if (action === "pin" || action === "minimize" || action === "close") {
       hoverIntent.onWindowAction(action);
       return;
     }

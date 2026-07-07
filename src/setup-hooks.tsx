@@ -73,8 +73,8 @@ export async function handleLaunchCompanion(
 ): Promise<void> {
   const toast = await showToast({
     style: Toast.Style.Animated,
-    title: "正在安装 / 启动 Floating Companion",
-    message: "正在检查本地安装；如未安装会下载 release artifact。",
+    title: "正在安装 / 更新 / 启动 Floating Companion",
+    message: "正在检查当前版本；如需更新会下载 release artifact。",
   });
 
   const result = await bootstrapCompanion({
@@ -126,8 +126,8 @@ function updateCompanionProgressToast(
   toast.style = Toast.Style.Animated;
 
   if (progress.stage === "checking-installed") {
-    toast.title = "正在检查 Floating Companion";
-    toast.message = "正在检查本地安装。";
+    toast.title = "正在检查当前版本 Floating Companion";
+    toast.message = "正在查找当前扩展版本对应的本地安装。";
     return;
   }
 
@@ -331,7 +331,7 @@ export default function Command() {
           <ActionPanel>
             <Action
               icon={Icon.Play}
-              title="Install / Start Floating Companion"
+              title="Install / Update / Start Floating Companion"
               onAction={() => {
                 void handleLaunchCompanion(preferences);
               }}

@@ -66,7 +66,7 @@ interface InitialWindowState {
 }
 
 type WindowAction =
-  "force-exit" | "hide" | "hover-enter" | "hover-leave" | "minimize";
+  "pin" | "minimize" | "close" | "hover-enter" | "hover-leave";
 type ReadyToShowWindow = Pick<BrowserWindow, "loadFile" | "once" | "show">;
 type LifecycleWindow = Pick<BrowserWindow, "on">;
 
@@ -429,9 +429,11 @@ function scheduleDockedHide(): void {
 
 function handleWindowAction(action: WindowAction): void {
   switch (action) {
-    case "hide":
-      hideDockedWindow();
+    case "pin": {
+      const pinned = mainWindow?.isAlwaysOnTop() ?? false;
+      mainWindow?.setAlwaysOnTop(!pinned);
       break;
+    }
     case "hover-enter":
       revealDockedWindow();
       break;
@@ -444,7 +446,8 @@ function handleWindowAction(action: WindowAction): void {
       prepareForWindowMinimize();
       mainWindow?.minimize();
       break;
-    case "force-exit":
+    case "close":
+      mainWindow?.close();
       break;
   }
 }

@@ -3,7 +3,7 @@ import type { DockEdge } from "./geometry";
 import type { FloatingViewModel } from "./view-model";
 
 type WindowAction =
-  "force-exit" | "hide" | "hover-enter" | "hover-leave" | "minimize";
+  "pin" | "minimize" | "close" | "hover-enter" | "hover-leave";
 
 export interface CompanionBridge {
   copyText(value: string): Promise<void>;
@@ -30,11 +30,6 @@ const bridge: CompanionBridge = {
     ipcRenderer.send("companion:dock-request", edge);
   },
   requestWindowAction(action) {
-    if (action === "force-exit") {
-      bridge.forceExitCompanion();
-      return;
-    }
-
     ipcRenderer.send("companion:window-action", action);
   },
   subscribe(listener) {
