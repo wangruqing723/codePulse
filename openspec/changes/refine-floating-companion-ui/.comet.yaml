@@ -1,5 +1,5 @@
 workflow: full
-phase: verify
+phase: archive
 context_compression: off
 build_mode: executing-plans
 build_pause: null
@@ -12,11 +12,11 @@ auto_transition: true
 base_ref: e673caa8ad20b9924e2dc68c5e6aa9c68358b7d2
 design_doc: docs/superpowers/specs/2026-07-07-refine-floating-companion-ui-design.md
 plan: docs/superpowers/plans/2026-07-07-refine-floating-companion-ui.md
-verify_result: pending
+verify_result: pass
 verification_report: docs/superpowers/reports/2026-07-07-refine-floating-companion-ui-verify.md
-branch_status: pending
+branch_status: handled
 created_at: 2026-07-07
-verified_at: null
+verified_at: 2026-07-07
 archived: false
 handoff_context: openspec/changes/refine-floating-companion-ui/.comet/handoff/design-context.json
 handoff_hash: 4174e82bb5a748519f75d1ec1212943254f492c4195e6b7f2d6b59bb6ae878e6
