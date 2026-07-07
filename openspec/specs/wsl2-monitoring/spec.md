@@ -10,6 +10,8 @@ TBD - created by archiving change wsl2-monitoring. Update Purpose after archive.
 - **WHEN** 至少一个受监控的 Claude Code 或 Codex CLI 会话处于运行中、已完成、错误或等待确认状态
 - **THEN** 悬浮窗头部展示这些状态的数字汇总
 - **AND** 汇总仅使用运行中、已完成、错误和等待确认这四种状态
+- **AND** 汇总项使用 12px 状态圆点与文本在同一行水平居中对齐
+- **AND** 汇总文本不得折行
 
 #### Scenario: 错误状态优先突出
 - **WHEN** 至少一个受监控会话处于错误状态，且其他会话处于运行中、已完成或等待确认状态
@@ -19,11 +21,14 @@ TBD - created by archiving change wsl2-monitoring. Update Purpose after archive.
 #### Scenario: 悬浮窗默认置顶
 - **WHEN** floating companion 启动
 - **THEN** 悬浮窗默认以 always-on-top 方式显示在其他普通窗口之上
+- **AND** 置顶控件展示白色垂直实心图钉和微弱白色激活背景
 
 #### Scenario: 用户切换置顶
 - **WHEN** 用户点击悬浮窗头部的置顶控件
 - **THEN** companion 切换窗口 always-on-top 状态
 - **AND** 不停止后台状态刷新
+- **AND** 未置顶时置顶控件展示灰色倾斜空心图钉和透明背景
+- **AND** 已置顶时置顶控件展示白色垂直实心图钉和微弱白色激活背景
 
 #### Scenario: 用户最小化悬浮窗
 - **WHEN** 用户点击悬浮窗头部的最小化控件
@@ -34,6 +39,10 @@ TBD - created by archiving change wsl2-monitoring. Update Purpose after archive.
 - **WHEN** 用户点击悬浮窗头部的关闭控件
 - **THEN** companion 关闭悬浮窗进程
 - **AND** 不对任何受监控 Claude Code 或 Codex CLI 进程执行终止操作
+
+#### Scenario: 头部不展示无意义占位元素
+- **WHEN** 悬浮窗 Header 渲染
+- **THEN** Header 不展示暗色垂直条、圆角矩形占位符或其他无语义拖拽装饰
 
 #### Scenario: 贴边后自动隐藏大半部分
 - **WHEN** 用户将悬浮窗拖到屏幕边缘并移开鼠标
@@ -98,6 +107,12 @@ TBD - created by archiving change wsl2-monitoring. Update Purpose after archive.
 - **WHEN** macOS 用户对 cwd 为 `/Users/me/project` 的会话选择复制路径动作
 - **THEN** 剪贴板收到 `/Users/me/project`
 
+#### Scenario: 复制按钮写入路径并展示反馈
+- **WHEN** 用户点击会话卡片路径行最右侧的复制图标按钮
+- **THEN** companion 使用可用剪贴板 API 写入该会话路径
+- **AND** 复制按钮展示短暂成功反馈动画
+- **AND** 卡片不展示除复制路径以外的其他操作
+
 ### Requirement: macOS 现有行为保持不变
 系统 SHALL 在新增 macOS floating companion 的同时保持现有 Raycast menu-bar、Setup Hooks、hook events 和本机 transcript 文件扫描行为不回退。
 
@@ -130,7 +145,7 @@ TBD - created by archiving change wsl2-monitoring. Update Purpose after archive.
 - **THEN** companion 仍可通过开发模式运行以完成核心功能验证
 
 ### Requirement: Floating companion 图标按钮交互
-系统 SHALL 在窗口操作按钮使用图标化内容时，仍正确处理用户对按钮内部图标元素的点击。窗口操作按钮 SHALL 仅包含置顶、最小化和关闭。
+系统 SHALL 在窗口操作按钮或复制路径按钮使用图标化内容时，仍正确处理用户对按钮内部图标元素的点击。窗口操作按钮 SHALL 仅包含置顶、最小化和关闭。
 
 #### Scenario: 点击置顶图标内部元素
 - **WHEN** 用户点击置顶按钮内部的图标元素
@@ -143,6 +158,14 @@ TBD - created by archiving change wsl2-monitoring. Update Purpose after archive.
 #### Scenario: 点击关闭图标内部元素
 - **WHEN** 用户点击关闭按钮内部的图标元素
 - **THEN** companion 触发 `close` 窗口动作
+
+#### Scenario: 点击复制图标内部元素
+- **WHEN** 用户点击复制路径按钮内部的图标元素
+- **THEN** companion 触发该卡片的复制路径动作
+
+#### Scenario: 图标按钮展示 hover 反馈
+- **WHEN** 用户将鼠标悬停在窗口操作按钮或复制路径按钮上
+- **THEN** 按钮背景展示轻微高亮反馈
 
 ### Requirement: Companion 共享 Raycast 监控偏好
 系统 SHALL 让 Electron floating companion 使用 Raycast 中配置的监控窗口和项目过滤偏好，并在配置快照不可用时保留安全兜底。
@@ -230,6 +253,14 @@ TBD - created by archiving change wsl2-monitoring. Update Purpose after archive.
 
 #### Scenario: 卡片展示进程存活时长
 - **WHEN** 会话存在可用于计算时长的时间字段
-- **THEN** 会话卡片右下角展示短时长文本
+- **THEN** 会话卡片第一行右侧展示短时长文本
 - **AND** 时长区域保持稳定尺寸，不挤压路径和上下文摘要
+
+#### Scenario: 卡片使用紧凑两行自然高度布局
+- **WHEN** 会话卡片没有错误摘要或等待原因以外的额外日志信息
+- **THEN** 卡片第一行左侧展示状态圆点和主标题
+- **AND** 卡片第一行右侧展示引擎名称和运行时长
+- **AND** 卡片第二行左侧展示暗色小字号路径
+- **AND** 卡片第二行右侧展示复制路径图标按钮
+- **AND** 卡片高度由内容自然撑开，不使用固定高度、最小高度、`flex-grow` 或两端垂直分布造成额外底部留白
 

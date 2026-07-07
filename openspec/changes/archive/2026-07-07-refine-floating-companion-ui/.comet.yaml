@@ -17,6 +17,6 @@ verification_report: docs/superpowers/reports/2026-07-07-refine-floating-compani
 branch_status: handled
 created_at: 2026-07-07
 verified_at: 2026-07-07
-archived: false
+archived: true
 handoff_context: openspec/changes/refine-floating-companion-ui/.comet/handoff/design-context.json
 handoff_hash: 4174e82bb5a748519f75d1ec1212943254f492c4195e6b7f2d6b59bb6ae878e6

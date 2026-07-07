@@ -2,6 +2,7 @@
 change: refine-floating-companion-ui
 design-doc: docs/superpowers/specs/2026-07-07-refine-floating-companion-ui-design.md
 base-ref: e673caa8ad20b9924e2dc68c5e6aa9c68358b7d2
+archived-with: 2026-07-07-refine-floating-companion-ui
 ---
 
 # Refine Floating Companion UI Implementation Plan
@@ -22,6 +23,7 @@ base-ref: e673caa8ad20b9924e2dc68c5e6aa9c68358b7d2
 - Header controls are limited to pin, minimize, and close.
 - Do not change transcript scanning, hook ingestion, companion bootstrap, packaging, or publishing logic.
 
+archived-with: 2026-07-07-refine-floating-companion-ui
 ---
 
 ### Task 1: View Model And Pin State

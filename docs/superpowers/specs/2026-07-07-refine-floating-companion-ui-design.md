@@ -2,6 +2,8 @@
 comet_change: refine-floating-companion-ui
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-07-07-refine-floating-companion-ui
+status: final
 ---
 
 # Refine Floating Companion UI Design
