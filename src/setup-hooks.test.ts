@@ -63,12 +63,20 @@ describe("CodePulse Center companion bootstrap action", () => {
 
     expect(showToast).toHaveBeenCalledWith({
       style: "animated",
-      title: "正在安装 / 启动 Floating Companion",
-      message: "正在检查本地安装；如未安装会下载 release artifact。",
+      title: "正在安装 / 更新 / 启动 Floating Companion",
+      message: "正在检查当前版本；如需更新会下载 release artifact。",
     });
 
     const onProgress =
       vi.mocked(bootstrapCompanion).mock.calls[0]?.[0].onProgress;
+    onProgress?.({ stage: "checking-installed" });
+
+    expect(toast).toMatchObject({
+      style: "animated",
+      title: "正在检查当前版本 Floating Companion",
+      message: "正在查找当前扩展版本对应的本地安装。",
+    });
+
     onProgress?.({
       stage: "downloading",
       downloadedBytes: 1024 * 1024,
