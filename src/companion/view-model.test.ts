@@ -54,6 +54,10 @@ describe("floating companion view model", () => {
 
     expect(model?.status).toBe("error");
     expect(statusText?.(model as never)).toBe("🔴 1 错误  🟢 2 运行中");
+    expect(model?.summaryItems).toEqual([
+      { status: "error", statusTone: "red", count: 1, label: "错误" },
+      { status: "running", statusTone: "green", count: 2, label: "运行中" },
+    ]);
   });
 
   it("filters idle sessions out of card display", async () => {
@@ -140,6 +144,7 @@ describe("floating companion view model", () => {
           status: "error",
           cwd: "/Users/wyong/docker/codePulse/plugins/my/plugin-todolist",
           title: "失败任务",
+          errorMessage: "Command failed with exit code 1",
           updatedAt: "2026-07-03T12:00:00.000Z",
         }),
       ]),
@@ -153,7 +158,9 @@ describe("floating companion view model", () => {
     expect(model?.sessions[0]?.fullPath).toContain(
       "/Users/wyong/docker/codePulse",
     );
-    expect(model?.sessions[0]?.contextText).toBeTruthy();
+    expect(model?.sessions[0]?.contextText).toBe(
+      "Command failed with exit code 1",
+    );
     expect(model?.sessions[0]?.durationText).toBe("02:14");
   });
 
@@ -213,6 +220,31 @@ describe("floating companion view model", () => {
     );
 
     expect(model?.sessions[0]?.contextText).toBe("等待用户确认");
+  });
+
+  it("leaves non-actionable session context empty when it would duplicate the title", async () => {
+    const { buildFloatingViewModel } = await loadViewModelModule();
+    const model = buildFloatingViewModel?.(
+      createSnapshot([
+        createSession({
+          id: "running",
+          status: "running",
+          title: "plugin-todolist",
+        }),
+        createSession({
+          id: "done",
+          status: "done",
+          title: "codePulse",
+          completedAt: "2026-07-03T12:03:45.000Z",
+        }),
+      ]),
+      { platform: "darwin" },
+    );
+
+    expect(model?.sessions.map((session) => session.contextText)).toEqual([
+      undefined,
+      undefined,
+    ]);
   });
 
   it("middle-truncates long WSL slash paths while preserving the full path", async () => {

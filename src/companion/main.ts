@@ -97,6 +97,10 @@ function platformForHost(): CompanionPlatform {
   return process.platform === "win32" ? "win32" : "darwin";
 }
 
+function currentPinState(): boolean {
+  return mainWindow?.isAlwaysOnTop() ?? true;
+}
+
 function stateRoot(): string {
   return path.join(app.getPath("userData"), "state");
 }
@@ -353,13 +357,23 @@ async function refreshModel(): Promise<void> {
   });
 
   if (source.kind === "unavailable") {
-    publishModel(buildFloatingViewModel(undefined, source.viewModelContext));
+    publishModel(
+      buildFloatingViewModel(undefined, {
+        ...source.viewModelContext,
+        isPinned: currentPinState(),
+      }),
+    );
     return;
   }
 
   try {
     const { snapshot } = await buildStateFromConfig(source.stateConfig);
-    publishModel(buildFloatingViewModel(snapshot, source.viewModelContext));
+    publishModel(
+      buildFloatingViewModel(snapshot, {
+        ...source.viewModelContext,
+        isPinned: currentPinState(),
+      }),
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const fallbackContext =
@@ -369,7 +383,12 @@ async function refreshModel(): Promise<void> {
             unavailableReason: message,
           }
         : source.viewModelContext;
-    publishModel(buildFloatingViewModel(undefined, fallbackContext));
+    publishModel(
+      buildFloatingViewModel(undefined, {
+        ...fallbackContext,
+        isPinned: currentPinState(),
+      }),
+    );
   }
 }
 
@@ -431,7 +450,12 @@ function handleWindowAction(action: WindowAction): void {
   switch (action) {
     case "pin": {
       const pinned = mainWindow?.isAlwaysOnTop() ?? false;
-      mainWindow?.setAlwaysOnTop(!pinned);
+      const nextPinned = !pinned;
+      mainWindow?.setAlwaysOnTop(nextPinned);
+      publishModel({
+        ...currentModel,
+        isPinned: nextPinned,
+      });
       break;
     }
     case "hover-enter":

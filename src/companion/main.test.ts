@@ -290,6 +290,9 @@ describe("companion main window display flow", () => {
     const fakeWindow = {
       isAlwaysOnTop: vi.fn(() => true),
       setAlwaysOnTop: vi.fn(),
+      webContents: {
+        send: vi.fn(),
+      },
     };
 
     mainModule.__testing__.resetState();
@@ -297,6 +300,10 @@ describe("companion main window display flow", () => {
     mainModule.__testing__.handleWindowAction("pin" as never);
 
     expect(fakeWindow.setAlwaysOnTop).toHaveBeenCalledWith(false);
+    expect(fakeWindow.webContents.send).toHaveBeenCalledWith(
+      "companion:view-model",
+      expect.objectContaining({ isPinned: false }),
+    );
   });
 
   it("closes the companion window without invoking force-exit recovery", async () => {

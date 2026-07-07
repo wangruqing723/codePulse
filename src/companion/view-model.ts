@@ -1,6 +1,5 @@
 import { toWslUncPath } from "../lib/wsl";
 import {
-  AGENT_LABEL,
   STATUS_LABEL,
   STATUS_ICON,
   type SessionRecord,
@@ -16,6 +15,7 @@ export interface FloatingViewModelContext {
   platform: CompanionPlatform;
   unavailableReason?: string;
   wslDistro?: string;
+  isPinned?: boolean;
   now?: Date;
 }
 
@@ -37,13 +37,22 @@ export interface FloatingSessionViewModel {
   copyActions: SessionCopyAction[];
 }
 
+export interface FloatingStatusSummaryItem {
+  status: DisplaySessionStatus;
+  statusTone: StatusTone;
+  count: number;
+  label: string;
+}
+
 export type FloatingStatus = SessionStatus | "unavailable" | "empty";
 
 export interface FloatingViewModel {
   status: FloatingStatus;
   count: number;
+  isPinned?: boolean;
   text: string;
   summaryText?: string;
+  summaryItems?: FloatingStatusSummaryItem[];
   unavailableReason?: string;
   sessions: FloatingSessionViewModel[];
 }
@@ -150,6 +159,27 @@ export function statusText(model: FloatingViewModel): string {
     : `${STATUS_LABEL[model.status]} ${model.count} 个`;
 }
 
+function statusSummaryItems(
+  sessions: FloatingSessionViewModel[],
+): FloatingStatusSummaryItem[] {
+  return DISPLAY_STATUS_ORDER.flatMap((status) => {
+    const count = sessions.filter(
+      (session) => session.displayStatus === status,
+    ).length;
+
+    return count > 0
+      ? [
+          {
+            status,
+            statusTone: STATUS_TONE[status],
+            count,
+            label: SUMMARY_LABEL[status],
+          },
+        ]
+      : [];
+  });
+}
+
 function displayStatusFor(
   session: SessionRecord,
 ): DisplaySessionStatus | undefined {
@@ -231,7 +261,7 @@ function displayPathFor(path: string | undefined): string | undefined {
     .join("/")}`;
 }
 
-function sessionContextText(session: SessionRecord): string {
+function sessionContextText(session: SessionRecord): string | undefined {
   if (session.status === "waiting") {
     return "等待用户确认";
   }
@@ -240,11 +270,7 @@ function sessionContextText(session: SessionRecord): string {
     return session.errorMessage;
   }
 
-  if (session.title) {
-    return session.title;
-  }
-
-  return AGENT_LABEL[session.agent];
+  return undefined;
 }
 
 export function buildFloatingViewModel(
@@ -283,8 +309,10 @@ export function buildFloatingViewModel(
   const model: FloatingViewModel = {
     status,
     count,
+    isPinned: context.isPinned,
     text: "",
     summaryText: "",
+    summaryItems: statusSummaryItems(sessions),
     unavailableReason: context.unavailableReason,
     sessions,
   };
