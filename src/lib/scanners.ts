@@ -148,6 +148,26 @@ export function filterClaudeTranscriptFiles(files: string[]): string[] {
   );
 }
 
+// Codex Desktop 会为每个主会话派生大量子代理线程（guardian / worker /
+// explorer 等），这些子代理文件的 payload.session_id 复用父线程 id，若参与扫描
+// 会与父会话发生 id 碰撞、被 dedup 折叠成一个，导致展示的状态与真正在跑的线程
+// 脱钩。这里通过 session_meta 的 thread_source / source.subagent 标记识别并排除
+// 子代理，只保留用户主会话，行为上与 Claude 过滤 subagents 目录对齐。
+export function isCodexSubagentMeta(
+  metaPayload: JsonObject | undefined,
+): boolean {
+  if (!metaPayload) {
+    return false;
+  }
+
+  if (stringValue(metaPayload.thread_source) === "subagent") {
+    return true;
+  }
+
+  const source = asObject(metaPayload.source);
+  return !!source && source.subagent !== undefined;
+}
+
 export function inferClaudeStatus(
   event: JsonObject | undefined,
   ageMs: number,
@@ -327,6 +347,11 @@ function isCodexFunctionOutputEvent(event: JsonObject | undefined): boolean {
   );
 }
 
+function isCodexFunctionCallEvent(event: JsonObject | undefined): boolean {
+  const payloadType = codexPayloadType(event);
+  return payloadType === "function_call" || payloadType === "custom_tool_call";
+}
+
 function isCodexTerminalEvent(event: JsonObject | undefined): boolean {
   const payloadType = codexPayloadType(event);
   return payloadType === "task_complete" || payloadType === "turn_aborted";
@@ -356,6 +381,32 @@ function hasPendingCodexWaitingCall(events: JsonObject[]): boolean {
     }
 
     if (isCodexWaitingForUser(event)) {
+      return !callId || !completedCallIds.has(callId);
+    }
+
+    if (isCodexTurnBoundaryEvent(event)) {
+      return false;
+    }
+  }
+
+  return false;
+}
+
+function hasPendingCodexToolCall(events: JsonObject[]): boolean {
+  const completedCallIds = new Set<string>();
+
+  for (const event of [...events].reverse()) {
+    if (isCodexTerminalEvent(event)) {
+      return false;
+    }
+
+    const callId = codexCallId(event);
+    if (isCodexFunctionOutputEvent(event) && callId) {
+      completedCallIds.add(callId);
+      continue;
+    }
+
+    if (isCodexFunctionCallEvent(event)) {
       return !callId || !completedCallIds.has(callId);
     }
 
@@ -401,6 +452,13 @@ export function inferCodexStatusFromEvents(
 
   if (hasPendingCodexWaitingCall(events)) {
     return "waiting";
+  }
+
+  // Codex 桌面版执行长命令时，工具调用与其结果之间可能间隔上百秒不写文件，
+  // 仅靠 30 秒 mtime 窗口会把"运行中"误判为"完成"。只要尾部存在尚未收到
+  // 结果、且当前 turn 未结束的工具调用，就按运行中处理，不依赖写入时间。
+  if (hasPendingCodexToolCall(events)) {
+    return "running";
   }
 
   return inferCodexStatus(lastCodexMeaningfulEvent(events), ageMs, false);
@@ -544,6 +602,10 @@ async function scanCodexFile(
 
   const firstEvent = asObject(await readFirstJsonLine(filePath));
   const metaPayload = asObject(firstEvent?.payload);
+  if (isCodexSubagentMeta(metaPayload)) {
+    return undefined;
+  }
+
   const parsedEvents = (
     await readTailJsonLines(filePath, RECENT_EVENT_LINES, RECENT_EVENT_BYTES)
   )

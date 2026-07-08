@@ -11,6 +11,7 @@ import {
   inferCodexStatus,
   inferCodexStatusFromEvents,
   inferCodexTurnStartAt,
+  isCodexSubagentMeta,
   scanSessions,
 } from "./scanners";
 import { formatElapsed, toPositiveInt } from "./time";
@@ -169,6 +170,26 @@ describe("Claude status inference", () => {
         },
       ]),
     ).toBe("2026-07-01T00:00:00.000Z");
+  });
+});
+
+describe("Codex subagent detection", () => {
+  it("flags Codex Desktop subagent threads via thread_source", () => {
+    expect(isCodexSubagentMeta({ thread_source: "subagent" })).toBe(true);
+  });
+
+  it("flags subagent threads carrying a source.subagent marker", () => {
+    expect(
+      isCodexSubagentMeta({ source: { subagent: { other: "guardian" } } }),
+    ).toBe(true);
+    expect(isCodexSubagentMeta({ source: { subagent: "review" } })).toBe(true);
+  });
+
+  it("keeps user-originated main sessions", () => {
+    expect(
+      isCodexSubagentMeta({ thread_source: "user", session_id: "abc" }),
+    ).toBe(false);
+    expect(isCodexSubagentMeta(undefined)).toBe(false);
   });
 });
 
@@ -333,6 +354,74 @@ describe("Codex status inference", () => {
 
   it("prioritizes error status", () => {
     expect(inferCodexStatus({ type: "event_msg" }, 10_000, true)).toBe("error");
+  });
+
+  it("treats a pending Codex tool call as running past the mtime window", () => {
+    expect(
+      inferCodexStatusFromEvents(
+        [
+          {
+            type: "event_msg",
+            timestamp: "2026-07-01T00:00:00.000Z",
+            payload: { type: "task_started" },
+          },
+          {
+            type: "response_item",
+            timestamp: "2026-07-01T00:00:05.000Z",
+            payload: { type: "function_call", call_id: "call-1" },
+          },
+        ],
+        120_000,
+        false,
+      ),
+    ).toBe("running");
+  });
+
+  it("does not treat a completed Codex tool call as running once stale", () => {
+    expect(
+      inferCodexStatusFromEvents(
+        [
+          {
+            type: "event_msg",
+            timestamp: "2026-07-01T00:00:00.000Z",
+            payload: { type: "task_started" },
+          },
+          {
+            type: "response_item",
+            timestamp: "2026-07-01T00:00:05.000Z",
+            payload: { type: "function_call", call_id: "call-1" },
+          },
+          {
+            type: "response_item",
+            timestamp: "2026-07-01T00:00:20.000Z",
+            payload: { type: "function_call_output", call_id: "call-1" },
+          },
+        ],
+        120_000,
+        false,
+      ),
+    ).toBe("done");
+  });
+
+  it("does not treat a tool call as running after the turn completes", () => {
+    expect(
+      inferCodexStatusFromEvents(
+        [
+          {
+            type: "response_item",
+            timestamp: "2026-07-01T00:00:05.000Z",
+            payload: { type: "function_call", call_id: "call-1" },
+          },
+          {
+            type: "event_msg",
+            timestamp: "2026-07-01T00:00:30.000Z",
+            payload: { type: "task_complete" },
+          },
+        ],
+        120_000,
+        false,
+      ),
+    ).toBe("done");
   });
 
   it("uses the latest user turn event as the turn start", () => {
@@ -574,5 +663,80 @@ describe("configurable scan roots", () => {
       { agent: "claude", cwd },
       { agent: "codex", cwd },
     ]);
+  });
+
+  it("excludes Codex Desktop subagent transcripts and keeps the parent session", async () => {
+    const tmpRoot = await mkdtemp(path.join(os.tmpdir(), "codepulse-codex-"));
+    const claudeProjectsRoot = path.join(tmpRoot, "claude-projects");
+    const codexSessionsRoot = path.join(tmpRoot, "codex-sessions");
+    const now = Date.parse("2026-07-08T12:00:00.000Z");
+    const cwd = "/Users/wyong/docker/codePulse";
+
+    // 用户主会话：thread_source=user，运行中
+    await writeJsonlFixture(
+      path.join(codexSessionsRoot, "2026", "07", "08", "parent.jsonl"),
+      [
+        {
+          type: "session_meta",
+          payload: {
+            cwd,
+            session_id: "shared-session",
+            originator: "Codex Desktop",
+            thread_source: "user",
+          },
+        },
+        {
+          type: "event_msg",
+          timestamp: "2026-07-08T11:58:00.000Z",
+          payload: { type: "user_message" },
+        },
+        {
+          type: "response_item",
+          timestamp: "2026-07-08T11:59:00.000Z",
+          payload: { type: "function_call", call_id: "call-1" },
+        },
+      ],
+      now - 1_000,
+    );
+
+    // 子代理（source.subagent）：session_id 复用父线程 id，应被排除
+    await writeJsonlFixture(
+      path.join(codexSessionsRoot, "2026", "07", "08", "guardian.jsonl"),
+      [
+        {
+          type: "session_meta",
+          payload: {
+            cwd,
+            session_id: "shared-session",
+            originator: "Codex Desktop",
+            thread_source: "subagent",
+            source: { other: "guardian" },
+          },
+        },
+        {
+          type: "event_msg",
+          timestamp: "2026-07-08T11:59:30.000Z",
+          payload: { type: "task_complete" },
+        },
+      ],
+      now - 500,
+    );
+
+    const sessions = await scanSessions({
+      activeWindowMs: 5 * 60 * 1000,
+      monitorPrefixes: [cwd],
+      now,
+      roots: {
+        claudeProjectsRoot,
+        codexSessionsRoot,
+      },
+    });
+
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({
+      agent: "codex",
+      status: "running",
+      cwd,
+    });
   });
 });
