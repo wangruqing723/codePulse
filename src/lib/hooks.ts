@@ -468,7 +468,10 @@ export function upsertCodePulseCodexNotify(
   if (block) {
     if (!options.force) {
       throw new CodexNotifyConflictError(
-        lines.slice(block.start, block.end + 1).join("\n").trim(),
+        lines
+          .slice(block.start, block.end + 1)
+          .join("\n")
+          .trim(),
       );
     }
 

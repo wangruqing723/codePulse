@@ -291,7 +291,10 @@ describe("Codex notify force-overwrite restore flow", () => {
 
       // 非 force 安装应因既有 notify 抛冲突，且不改动配置。
       await expect(
-        installHooks({ supportPath, codexConfigPath, notifyBackupRoot }, "codex"),
+        installHooks(
+          { supportPath, codexConfigPath, notifyBackupRoot },
+          "codex",
+        ),
       ).rejects.toBeInstanceOf(CodexNotifyConflictError);
       expect(await readFile(codexConfigPath, "utf8")).toBe(original);
 
