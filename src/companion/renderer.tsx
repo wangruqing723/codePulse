@@ -298,8 +298,34 @@ export function renderFloatingHtml(model: FloatingViewModel): string {
   `;
 }
 
-function renderIntoRoot(root: HTMLElement, model: FloatingViewModel): void {
+function measureContentHeight(root: HTMLElement): number {
+  // .shell 是内容根，用 scrollHeight 拿到不受窗口裁剪的真实内容高度。
+  const shell = root.querySelector<HTMLElement>(".shell");
+  return shell?.scrollHeight ?? root.scrollHeight;
+}
+
+function reportContentHeight(
+  root: HTMLElement,
+  bridge: Pick<CompanionBridge, "reportContentHeight">,
+): void {
+  const height = measureContentHeight(root);
+  if (height > 0) {
+    bridge.reportContentHeight(height);
+  }
+}
+
+function renderIntoRoot(
+  root: HTMLElement,
+  model: FloatingViewModel,
+  bridge?: Pick<CompanionBridge, "reportContentHeight">,
+): void {
   root.innerHTML = renderFloatingHtml(model);
+  if (bridge) {
+    // 布局落定后再测量，确保拿到换行、折叠后的最终高度。
+    requestAnimationFrame(() => {
+      reportContentHeight(root, bridge);
+    });
+  }
 }
 
 interface HoverIntentController {
@@ -416,13 +442,14 @@ function bootstrap(): void {
   }
 
   bindInteractions(root, bridge);
+  renderIntoRoot(root, initialModel, bridge);
   const unsubscribe = bridge.subscribe((model) => {
-    renderIntoRoot(root, model);
+    renderIntoRoot(root, model, bridge);
   });
 
   bridge.getState().then((model) => {
     if (model) {
-      renderIntoRoot(root, model);
+      renderIntoRoot(root, model, bridge);
     }
   });
 

@@ -49,6 +49,49 @@ describe("floating companion geometry", () => {
     });
   });
 
+  it("clamps measured content height into the allowed window range", async () => {
+    const { clampCompanionHeight } = await loadGeometryModule();
+
+    expect(clampCompanionHeight?.(300, { min: 120, max: 520 })).toBe(300);
+    expect(clampCompanionHeight?.(60, { min: 120, max: 520 })).toBe(120);
+    expect(clampCompanionHeight?.(900, { min: 120, max: 520 })).toBe(520);
+    expect(clampCompanionHeight?.(Number.NaN, { min: 120, max: 520 })).toBe(
+      120,
+    );
+  });
+
+  it("re-docks along the docked edge when resizing height", async () => {
+    const { resizeToHeight } = await loadGeometryModule();
+    const full = { x: 980, y: 220, width: 320, height: 360 };
+
+    // 底部吸附：高度变小后应贴住底边（y 随高度上移）。
+    expect(resizeToHeight?.(full, workArea, "bottom", 200)).toEqual({
+      x: 980,
+      y: 650,
+      width: 320,
+      height: 200,
+    });
+    // 右侧吸附：仅高度变化，x 仍贴右边。
+    expect(resizeToHeight?.(full, workArea, "right", 200)).toEqual({
+      x: 980,
+      y: 220,
+      width: 320,
+      height: 200,
+    });
+  });
+
+  it("keeps a free-floating window within the work area when resizing", async () => {
+    const { resizeToHeight } = await loadGeometryModule();
+    const full = { x: 200, y: 790, width: 320, height: 200 };
+
+    expect(resizeToHeight?.(full, workArea, undefined, 120)).toEqual({
+      x: 200,
+      y: 730,
+      width: 320,
+      height: 120,
+    });
+  });
+
   it("keeps left, top, and bottom edge windows reachable", async () => {
     const { hiddenBounds } = await loadGeometryModule();
     const left = hiddenBounds?.(

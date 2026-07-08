@@ -1,11 +1,16 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildClaudeHookCommand,
+  CodexNotifyConflictError,
+  extractConflictingNotify,
+  installHooks,
   removeCodePulseClaudeHook,
   removeCodePulseCodexNotify,
+  restoreCodexNotify,
+  uninstallHooks,
   upsertCodePulseClaudeHook,
   upsertCodePulseCodexNotify,
 } from "./hooks";
@@ -107,10 +112,63 @@ describe("Codex notify config", () => {
     expect(next).toBe(`${NOTIFY_LINE}\n\n[mcp_servers]\n`);
   });
 
-  it("replaces an existing top-level notify command", () => {
+  it("updates its own existing CodePulse notify line in place", () => {
+    const next = upsertCodePulseCodexNotify(
+      `model = "gpt-5.5"\n${NOTIFY_LINE}\n\n[tui]\n`,
+      SCRIPT_PATH,
+    );
+
+    expect(next).toBe(`model = "gpt-5.5"\n${NOTIFY_LINE}\n\n[tui]\n`);
+  });
+
+  it("throws a conflict for a pre-existing non-CodePulse notify", () => {
+    expect(() =>
+      upsertCodePulseCodexNotify(
+        'model = "gpt-5.5"\nnotify = ["/bin/true"]\n\n[tui]\n',
+        SCRIPT_PATH,
+      ),
+    ).toThrow(CodexNotifyConflictError);
+  });
+
+  it("surfaces the conflicting notify text on the error", () => {
+    try {
+      upsertCodePulseCodexNotify(
+        'notify = ["/opt/tool", "turn-ended"]\n',
+        SCRIPT_PATH,
+      );
+      expect.unreachable("expected a conflict error");
+    } catch (error) {
+      expect(error).toBeInstanceOf(CodexNotifyConflictError);
+      expect((error as CodexNotifyConflictError).existingNotify).toBe(
+        'notify = ["/opt/tool", "turn-ended"]',
+      );
+    }
+  });
+
+  it("overwrites a conflicting notify when force is set", () => {
     const next = upsertCodePulseCodexNotify(
       'model = "gpt-5.5"\nnotify = ["/bin/true"]\n\n[tui]\n',
       SCRIPT_PATH,
+      { force: true },
+    );
+
+    expect(next).toBe(`model = "gpt-5.5"\n${NOTIFY_LINE}\n\n[tui]\n`);
+  });
+
+  it("detects a conflict across a multi-line notify array", () => {
+    expect(() =>
+      upsertCodePulseCodexNotify(
+        'model = "gpt-5.5"\nnotify = [\n    "/opt/tool",\n    "turn-ended",\n]\n\n[tui]\n',
+        SCRIPT_PATH,
+      ),
+    ).toThrow(CodexNotifyConflictError);
+  });
+
+  it("overwrites a multi-line conflicting notify array when forced", () => {
+    const next = upsertCodePulseCodexNotify(
+      'model = "gpt-5.5"\nnotify = [\n    "/opt/tool",\n    "turn-ended",\n]\n\n[tui]\n',
+      SCRIPT_PATH,
+      { force: true },
     );
 
     expect(next).toBe(`model = "gpt-5.5"\n${NOTIFY_LINE}\n\n[tui]\n`);
@@ -122,6 +180,57 @@ describe("Codex notify config", () => {
     );
 
     expect(next).toBe('model = "gpt-5.5"\n\n[mcp_servers]\n');
+  });
+
+  it("removes a multi-line CodePulse notify array as one block", () => {
+    const next = removeCodePulseCodexNotify(
+      `model = "gpt-5.5"\nnotify = [\n    "${SCRIPT_PATH}",\n    "codex",\n]\n\nnotify = ["/opt/tool", "turn-ended"]\n`,
+    );
+
+    expect(next).toBe(
+      'model = "gpt-5.5"\n\nnotify = ["/opt/tool", "turn-ended"]\n',
+    );
+  });
+
+  it("extracts a conflicting single-line notify for backup", () => {
+    expect(
+      extractConflictingNotify(
+        `model = "gpt-5.5"\nnotify = ["/opt/tool", "turn-ended"]\n\n[tui]\n`,
+      ),
+    ).toBe('notify = ["/opt/tool", "turn-ended"]');
+  });
+
+  it("extracts a conflicting multi-line notify array for backup", () => {
+    expect(
+      extractConflictingNotify(
+        'notify = [\n    "/opt/tool",\n    "turn-ended",\n]\n',
+      ),
+    ).toBe('notify = [\n    "/opt/tool",\n    "turn-ended",\n]');
+  });
+
+  it("ignores a CodePulse notify when extracting conflicts", () => {
+    expect(
+      extractConflictingNotify(`model = "gpt-5.5"\n${NOTIFY_LINE}\n`),
+    ).toBeUndefined();
+  });
+
+  it("restores a saved notify after removing CodePulse's own", () => {
+    const restored = restoreCodexNotify(
+      `model = "gpt-5.5"\n${NOTIFY_LINE}\n\n[tui]\n`,
+      'notify = ["/opt/tool", "turn-ended"]',
+    );
+
+    expect(restored).toBe(
+      'model = "gpt-5.5"\nnotify = ["/opt/tool", "turn-ended"]\n\n[tui]\n',
+    );
+  });
+
+  it("does not double-insert when a top-level notify already exists on restore", () => {
+    const content = 'model = "gpt-5.5"\nnotify = ["/opt/other"]\n';
+
+    expect(
+      restoreCodexNotify(content, 'notify = ["/opt/tool", "turn-ended"]'),
+    ).toBe(content);
   });
 });
 
@@ -162,6 +271,50 @@ describe("Hook script event roots", () => {
       expect(await readFile(scriptPath, "utf8")).toContain(
         JSON.stringify(path.join(root, "events")),
       );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("Codex notify force-overwrite restore flow", () => {
+  it("restores the user's original notify on uninstall after a forced overwrite", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "codepulse-codex-"));
+    const supportPath = path.join(root, "support");
+    const notifyBackupRoot = path.join(root, "codepulse");
+    const codexConfigPath = path.join(root, "config.toml");
+    const original =
+      'model = "gpt-5.5"\nnotify = ["/opt/computer-use", "turn-ended"]\n\n[tui]\n';
+
+    try {
+      await writeFile(codexConfigPath, original, "utf8");
+
+      // 非 force 安装应因既有 notify 抛冲突，且不改动配置。
+      await expect(
+        installHooks({ supportPath, codexConfigPath, notifyBackupRoot }, "codex"),
+      ).rejects.toBeInstanceOf(CodexNotifyConflictError);
+      expect(await readFile(codexConfigPath, "utf8")).toBe(original);
+
+      // force 安装应写入 CodePulse notify，并备份被顶掉的原 notify。
+      await installHooks(
+        { supportPath, codexConfigPath, notifyBackupRoot },
+        "codex",
+        { force: true },
+      );
+      const afterInstall = await readFile(codexConfigPath, "utf8");
+      expect(afterInstall).toContain("codepulse-hook");
+      expect(afterInstall).not.toContain("/opt/computer-use");
+
+      // 卸载应还原用户原本的 notify，而不是留空。
+      await uninstallHooks(
+        { supportPath, codexConfigPath, notifyBackupRoot },
+        "codex",
+      );
+      const afterUninstall = await readFile(codexConfigPath, "utf8");
+      expect(afterUninstall).toContain(
+        'notify = ["/opt/computer-use", "turn-ended"]',
+      );
+      expect(afterUninstall).not.toContain("codepulse-hook");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

@@ -20,7 +20,9 @@ import {
   companionPreferencesRoot,
   saveCompanionPreferencesSnapshot,
 } from "./lib/companion-preferences";
+import { eventsPath } from "./lib/state";
 import {
+  CodexNotifyConflictError,
   getHookInstallStatus,
   installHooks,
   uninstallHooks,
@@ -189,6 +191,7 @@ export default function Command() {
       await saveCompanionPreferencesSnapshot(
         companionPreferencesRoot(),
         preferences,
+        eventsPath(environment.supportPath),
       );
       setStatus(await getHookInstallStatus(environment.supportPath));
     } finally {
@@ -266,6 +269,47 @@ export default function Command() {
           title: `${title} Hook 已安装`,
         });
       } catch (error) {
+        // Codex 的 notify 是单一键；检测到用户既有的非 CodePulse notify 时不静默
+        // 覆盖，先提示用户确认，确认后再以 force 覆盖并备份原配置。
+        if (error instanceof CodexNotifyConflictError) {
+          const shouldOverwrite = await confirmAlert({
+            title: "Codex 已有其他 notify 配置",
+            message: `检测到既有配置：\n${error.existingNotify}\n\nCodex 只支持一个 notify，覆盖后原配置将失效（已自动备份）。是否覆盖？`,
+            primaryAction: {
+              title: "覆盖",
+              style: Alert.ActionStyle.Destructive,
+            },
+            dismissAction: {
+              title: "取消",
+            },
+          });
+
+          if (!shouldOverwrite) {
+            return;
+          }
+
+          try {
+            const next = await installHooks(environment.supportPath, target, {
+              force: true,
+            });
+            setStatus(next);
+            await showToast({
+              style: Toast.Style.Success,
+              title: `${title} Hook 已安装`,
+            });
+          } catch (forceError) {
+            await showToast({
+              style: Toast.Style.Failure,
+              title: `${title} Hook 安装失败`,
+              message:
+                forceError instanceof Error
+                  ? forceError.message
+                  : String(forceError),
+            });
+          }
+          return;
+        }
+
         await showToast({
           style: Toast.Style.Failure,
           title: `${title} Hook 安装失败`,

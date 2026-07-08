@@ -53,6 +53,37 @@ export function dockWindow(
   }
 }
 
+export interface HeightBounds {
+  min: number;
+  max: number;
+}
+
+// 把测量到的内容高度夹取到窗口允许区间；内容超出上限时由列表内部滚动承接。
+export function clampCompanionHeight(
+  contentHeight: number,
+  { min, max }: HeightBounds,
+): number {
+  if (!Number.isFinite(contentHeight)) {
+    return min;
+  }
+
+  return Math.round(clamp(contentHeight, min, max));
+}
+
+// 按新高度重算窗口边界：吸附在某条边时沿该边重新对齐（底部吸附会随高度改变
+// y 值），未吸附时仅在工作区内夹取，宽度与吸附锚点保持不变。
+export function resizeToHeight(
+  fullBounds: Rect,
+  workArea: Rect,
+  edge: DockEdge | undefined,
+  height: number,
+): Rect {
+  const resized = { ...fullBounds, height };
+  return edge
+    ? dockWindow(resized, workArea, edge)
+    : clampToWorkArea(resized, workArea);
+}
+
 export function hiddenBounds(
   bounds: Rect,
   displayWorkArea: Rect,
