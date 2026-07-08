@@ -7,6 +7,9 @@ import type { CompanionPlatform, FloatingViewModelContext } from "./view-model";
 export interface ResolveCompanionStateSourceOptions {
   stateRoot: string;
   preferences: Preferences;
+  // macOS 下由 Raycast 通过 ~/.codepulse 共享快照传入的 hook 事件目录，让悬浮窗
+  // 能读到与菜单栏相同的 hook 事件（waiting/error 等即时状态）。
+  eventRoot?: string;
   resolveDefaultWslContext?: () => Promise<WslContext>;
 }
 
@@ -44,6 +47,7 @@ export async function resolveCompanionStateSource(
       platform,
       stateConfig: {
         stateRoot: options.stateRoot,
+        ...(options.eventRoot ? { eventRoot: options.eventRoot } : {}),
         preferences: options.preferences,
       },
       viewModelContext: {

@@ -3,10 +3,14 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  clearCodexNotifyBackup,
   companionPreferencesRoot,
   companionPreferencesSnapshotPath,
+  loadCodexNotifyBackup,
+  loadCompanionEventRoot,
   loadCompanionPreferencesSnapshot,
   resolveCompanionPreferences,
+  saveCodexNotifyBackup,
   saveCompanionPreferencesSnapshot,
 } from "./companion-preferences";
 
@@ -64,6 +68,36 @@ describe("companion preferences snapshot", () => {
     );
   });
 
+  it("round-trips the shared hook eventRoot for the companion process", async () => {
+    const root = await tempRoot();
+    const eventRoot = "/Users/me/Library/Application Support/raycast/events";
+
+    await saveCompanionPreferencesSnapshot(
+      root,
+      { activeWindowMinutes: "5", monitorProjects: undefined },
+      eventRoot,
+    );
+
+    await expect(loadCompanionEventRoot(root)).resolves.toBe(eventRoot);
+  });
+
+  it("returns undefined eventRoot when the snapshot omits it", async () => {
+    const root = await tempRoot();
+
+    await saveCompanionPreferencesSnapshot(root, {
+      activeWindowMinutes: "5",
+      monitorProjects: undefined,
+    });
+
+    await expect(loadCompanionEventRoot(root)).resolves.toBeUndefined();
+  });
+
+  it("returns undefined eventRoot when the snapshot is missing", async () => {
+    const root = await tempRoot();
+
+    await expect(loadCompanionEventRoot(root)).resolves.toBeUndefined();
+  });
+
   it("loads only companion monitoring preferences from a snapshot", async () => {
     const root = await tempRoot();
 
@@ -77,5 +111,31 @@ describe("companion preferences snapshot", () => {
       activeWindowMinutes: "15",
       monitorProjects: "/Users/me/project",
     });
+  });
+
+  it("round-trips a force-overwritten Codex notify backup", async () => {
+    const root = await tempRoot();
+    const notify = 'notify = ["/opt/tool", "turn-ended"]';
+
+    await saveCodexNotifyBackup(root, notify);
+
+    await expect(loadCodexNotifyBackup(root)).resolves.toBe(notify);
+  });
+
+  it("returns undefined when no Codex notify backup exists", async () => {
+    const root = await tempRoot();
+
+    await expect(loadCodexNotifyBackup(root)).resolves.toBeUndefined();
+  });
+
+  it("clears the Codex notify backup and tolerates a missing file", async () => {
+    const root = await tempRoot();
+
+    await saveCodexNotifyBackup(root, 'notify = ["/opt/tool"]');
+    await clearCodexNotifyBackup(root);
+    await expect(loadCodexNotifyBackup(root)).resolves.toBeUndefined();
+
+    // 再次清理不存在的备份不应抛错。
+    await expect(clearCodexNotifyBackup(root)).resolves.toBeUndefined();
   });
 });

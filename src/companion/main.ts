@@ -12,8 +12,10 @@ import { buildStateFromConfig } from "../lib/state";
 import type { Preferences } from "../lib/types";
 import { resolveDefaultWslContext, type WslContext } from "../lib/wsl";
 import {
+  clampCompanionHeight,
   dockWindow,
   hiddenBounds,
+  resizeToHeight,
   revealedBounds,
   type DockEdge,
   type Rect,
@@ -30,12 +32,15 @@ import {
 } from "./process-control";
 import {
   companionPreferencesRoot,
+  loadCompanionEventRoot,
   resolveCompanionPreferences,
 } from "../lib/companion-preferences";
 
 const REFRESH_INTERVAL_MS = 5_000;
 const WINDOW_WIDTH = 340;
 const WINDOW_HEIGHT = 360;
+const WINDOW_MIN_HEIGHT = 120;
+const WINDOW_MAX_HEIGHT = 520;
 const VISIBLE_SLIVER_PX = 28;
 const EDGE_THRESHOLD_PX = 48;
 const MOVE_SETTLE_MS = 180;
@@ -255,6 +260,41 @@ function dockToEdge(edge: DockEdge, hidden: boolean): void {
   void persistWindowStateSoon();
 }
 
+// renderer 测量到内容真实高度后调用：把窗口高度收敛到内容大小（夹在
+// [min,max] 区间），消除卡片下方的固定留白。隐藏（吸附收起）状态下只更新
+// fullBounds，等下次展开时按新高度还原，避免打断收起动画。
+function applyContentHeight(contentHeight: number): void {
+  if (!mainWindow || !runtimeWindowState) {
+    return;
+  }
+
+  const height = clampCompanionHeight(contentHeight, {
+    min: WINDOW_MIN_HEIGHT,
+    max: WINDOW_MAX_HEIGHT,
+  });
+  if (height === Math.round(runtimeWindowState.fullBounds.height)) {
+    return;
+  }
+
+  const workArea = currentWorkArea(runtimeWindowState.fullBounds);
+  const fullBounds = resizeToHeight(
+    runtimeWindowState.fullBounds,
+    workArea,
+    runtimeWindowState.dockedEdge,
+    height,
+  );
+
+  runtimeWindowState = {
+    ...runtimeWindowState,
+    fullBounds,
+  };
+
+  if (!runtimeWindowState.hidden) {
+    applyWindowBounds(fullBounds);
+  }
+  void persistWindowStateSoon();
+}
+
 function revealDockedWindow(): void {
   clearHideTimer();
   if (
@@ -346,13 +386,21 @@ async function resolveCachedWsl(): Promise<WslContext> {
 
 async function refreshModel(): Promise<void> {
   const platform = platformForHost();
+  const preferencesRoot = companionPreferencesRoot();
   const preferences = await resolveCompanionPreferences(
-    companionPreferencesRoot(),
+    preferencesRoot,
     DEFAULT_PREFERENCES,
   );
+  // macOS 下 hook 事件由 Raycast 写入其扩展目录，悬浮窗默认读不到；从共享快照
+  // 取回 Raycast 的 eventRoot，让被动扫描与 hook 事件在悬浮窗侧也能合并。
+  const eventRoot =
+    platform === "darwin"
+      ? await loadCompanionEventRoot(preferencesRoot)
+      : undefined;
   const source = await resolveCompanionStateSource(platform, {
     stateRoot: stateRoot(),
     preferences,
+    eventRoot,
     resolveDefaultWslContext: resolveCachedWsl,
   });
 
@@ -512,8 +560,8 @@ async function createMainWindow(): Promise<BrowserWindow> {
     ...toRectangle(initialBounds),
     minWidth: WINDOW_WIDTH,
     maxWidth: WINDOW_WIDTH,
-    minHeight: 240,
-    maxHeight: 520,
+    minHeight: WINDOW_MIN_HEIGHT,
+    maxHeight: WINDOW_MAX_HEIGHT,
     alwaysOnTop: true,
     autoHideMenuBar: true,
     backgroundColor: "#111827",
@@ -549,6 +597,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
 }
 
 export const __testing__ = {
+  applyContentHeight,
   attachWindowLifecycleHandlers,
   getRuntimeWindowState: (): RuntimeWindowState | undefined =>
     runtimeWindowState,
@@ -588,6 +637,9 @@ function registerIpcHandlers(): void {
   });
   ipcMain.on("companion:dock-request", (_event, edge: DockEdge) => {
     dockToEdge(edge, false);
+  });
+  ipcMain.on("companion:content-height", (_event, height: number) => {
+    applyContentHeight(height);
   });
 }
 

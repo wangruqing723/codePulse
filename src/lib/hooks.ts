@@ -2,6 +2,12 @@ import os from "node:os";
 import path from "node:path";
 import { chmod, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { exists } from "./files";
+import {
+  clearCodexNotifyBackup,
+  companionPreferencesRoot,
+  loadCodexNotifyBackup,
+  saveCodexNotifyBackup,
+} from "./companion-preferences";
 
 const MARKER = "codepulse-hook";
 const TOML_TABLE_PATTERN = /^\s*\[/;
@@ -23,6 +29,9 @@ export interface HookInstallOptions {
   eventRoot?: string;
   claudeSettingsPath?: string;
   codexConfigPath?: string;
+  // force 覆盖 Codex notify 时，被顶掉的原 notify 存放目录（默认 ~/.codepulse）。
+  // 卸载时从这里读回并还原。可注入以便测试。
+  notifyBackupRoot?: string;
 }
 
 function hookPath(supportPath: string): string {
@@ -315,10 +324,9 @@ function removeCodePulseClaudeHooks(
 async function installCodexNotify(
   configPath: string,
   scriptPath: string,
+  force: boolean,
+  notifyBackupRoot: string,
 ): Promise<void> {
-  await mkdir(path.dirname(configPath), { recursive: true });
-  await backupIfExists(configPath);
-
   let content = "";
   try {
     content = await readFile(configPath, "utf8");
@@ -326,48 +334,209 @@ async function installCodexNotify(
     content = "";
   }
 
-  await writeFile(configPath, upsertCodePulseCodexNotify(content, scriptPath));
+  // 先在写盘前计算结果：若存在非 CodePulse 的 notify 冲突，upsert 会抛错，
+  // 此时不应创建目录或备份，保持 config.toml 原样，交由上层提示用户。
+  const next = upsertCodePulseCodexNotify(content, scriptPath, { force });
+
+  // force 覆盖时，把被顶掉的用户既有 notify 无损存到 CodePulse 自己的目录，
+  // 供卸载时还原（Codex 的一次性 .codepulse.bak 可能过期或不含该配置）。
+  if (force) {
+    const conflicting = extractConflictingNotify(content);
+    if (conflicting) {
+      await saveCodexNotifyBackup(notifyBackupRoot, conflicting);
+    }
+  }
+
+  await mkdir(path.dirname(configPath), { recursive: true });
+  await backupIfExists(configPath);
+  await writeFile(configPath, next);
+}
+
+// Codex 的 notify 是单一顶层键，只能指向一个程序。当检测到一个非 CodePulse 的
+// notify 已存在（例如 Codex Computer Use 的 SkyComputerUseClient）时，抛出此错误
+// 交由上层提示用户，避免静默覆盖用户既有配置。
+export class CodexNotifyConflictError extends Error {
+  readonly existingNotify: string;
+
+  constructor(existingNotify: string) {
+    super("Codex 已存在非 CodePulse 的 notify 配置");
+    this.name = "CodexNotifyConflictError";
+    this.existingNotify = existingNotify;
+  }
+}
+
+// 计算一行内未被字符串包裹的方括号净增量，用于跨行追踪数组是否闭合。
+function bracketDelta(line: string): number {
+  let delta = 0;
+  let inString = false;
+  let quote = "";
+  for (const char of line) {
+    if (inString) {
+      if (char === quote) {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      inString = true;
+      quote = char;
+    } else if (char === "[") {
+      delta += 1;
+    } else if (char === "]") {
+      delta -= 1;
+    }
+  }
+
+  return delta;
+}
+
+// 从 notify 起始行出发，返回该赋值的最后一行下标（含）。支持单行标量、单行数组
+// 与跨多行的数组写法（Codex 桌面版会把 notify 重写成多行数组）。
+function notifyBlockEnd(lines: string[], start: number): number {
+  let depth = 0;
+  let sawBracket = false;
+
+  for (let index = start; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line.includes("[")) {
+      sawBracket = true;
+    }
+    depth += bracketDelta(line);
+
+    if (!sawBracket || depth <= 0) {
+      return index;
+    }
+  }
+
+  return lines.length - 1;
+}
+
+interface NotifyBlock {
+  start: number;
+  end: number;
+}
+
+function findTopLevelNotifyBlock(lines: string[]): NotifyBlock | undefined {
+  const firstTableIndex = lines.findIndex((item) =>
+    TOML_TABLE_PATTERN.test(item),
+  );
+  const topLevelEnd = firstTableIndex >= 0 ? firstTableIndex : lines.length;
+  const start = lines.findIndex(
+    (item, index) => index < topLevelEnd && TOML_NOTIFY_PATTERN.test(item),
+  );
+  if (start < 0) {
+    return undefined;
+  }
+
+  return { start, end: notifyBlockEnd(lines, start) };
+}
+
+export interface UpsertCodexNotifyOptions {
+  force?: boolean;
+}
+
+// 把一段 notify 文本（单行或多行数组）插入到第一个 TOML 表之前的顶层区域。
+function insertTopLevelNotify(cleaned: string, notifyText: string): string {
+  const lines = cleaned.split(/\r?\n/);
+  const firstTableIndex = lines.findIndex((item) =>
+    TOML_TABLE_PATTERN.test(item),
+  );
+  if (firstTableIndex < 0) {
+    const prefix = cleaned.trimEnd();
+    return `${prefix ? `${prefix}\n` : ""}${notifyText}\n`;
+  }
+
+  const prefix = lines.slice(0, firstTableIndex).join("\n").trimEnd();
+  const suffix = lines.slice(firstTableIndex).join("\n").trimStart();
+  return `${prefix ? `${prefix}\n` : ""}${notifyText}\n\n${suffix}`
+    .trimEnd()
+    .concat("\n");
 }
 
 export function upsertCodePulseCodexNotify(
   content: string,
   scriptPath: string,
+  options: UpsertCodexNotifyOptions = {},
 ): string {
   const line = `notify = [${JSON.stringify(scriptPath)}, "codex"]`;
+  // 先移除 CodePulse 自己写过的 notify，剩下的任何顶层 notify 都属于用户既有配置。
   const cleaned = removeCodePulseCodexNotify(content);
   const lines = cleaned.split(/\r?\n/);
-  const firstTableIndex = lines.findIndex((item) =>
-    TOML_TABLE_PATTERN.test(item),
-  );
-  const topLevelEnd = firstTableIndex >= 0 ? firstTableIndex : lines.length;
-  const topLevelNotifyIndex = lines.findIndex(
-    (item, index) => index < topLevelEnd && TOML_NOTIFY_PATTERN.test(item),
-  );
 
-  if (topLevelNotifyIndex >= 0) {
-    lines[topLevelNotifyIndex] = line;
+  const block = findTopLevelNotifyBlock(lines);
+  if (block) {
+    if (!options.force) {
+      throw new CodexNotifyConflictError(
+        lines.slice(block.start, block.end + 1).join("\n").trim(),
+      );
+    }
+
+    lines.splice(block.start, block.end - block.start + 1, line);
     return `${lines.join("\n").trimEnd()}\n`;
   }
 
-  if (firstTableIndex < 0) {
-    const prefix = cleaned.trimEnd();
-    return `${prefix ? `${prefix}\n` : ""}${line}\n`;
-  }
-
-  const prefix = lines.slice(0, firstTableIndex).join("\n").trimEnd();
-  const suffix = lines.slice(firstTableIndex).join("\n").trimStart();
-  return `${prefix ? `${prefix}\n` : ""}${line}\n\n${suffix}`
-    .trimEnd()
-    .concat("\n");
+  return insertTopLevelNotify(cleaned, line);
 }
 
-export function removeCodePulseCodexNotify(content: string): string {
-  return content
+// 返回本次覆盖会顶掉的、用户既有的非 CodePulse 顶层 notify 文本（若无则 undefined）。
+// 用于在 force 覆盖前把原配置无损保存下来，供卸载时还原。
+export function extractConflictingNotify(content: string): string | undefined {
+  const cleaned = removeCodePulseCodexNotify(content);
+  const block = findTopLevelNotifyBlock(cleaned.split(/\r?\n/));
+  if (!block) {
+    return undefined;
+  }
+
+  return cleaned
     .split(/\r?\n/)
-    .filter((line) => !(line.includes("notify") && line.includes(MARKER)))
+    .slice(block.start, block.end + 1)
     .join("\n")
-    .trimEnd()
-    .concat("\n");
+    .trim();
+}
+
+// 卸载时把此前被 CodePulse 顶掉的原 notify 还原回顶层；若当前已有顶层 notify
+// 则不重复插入（保持幂等）。
+export function restoreCodexNotify(
+  content: string,
+  notifyText: string,
+): string {
+  const cleaned = removeCodePulseCodexNotify(content);
+  if (findTopLevelNotifyBlock(cleaned.split(/\r?\n/))) {
+    return cleaned;
+  }
+
+  return insertTopLevelNotify(cleaned, notifyText);
+}
+
+// 移除 CodePulse 写入的 notify（含 marker），支持单行与多行数组整块删除；
+// 保留用户既有的其他 notify 配置。
+export function removeCodePulseCodexNotify(content: string): string {
+  const lines = content.split(/\r?\n/);
+  const kept: string[] = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    if (TOML_NOTIFY_PATTERN.test(lines[index])) {
+      const end = notifyBlockEnd(lines, index);
+      const blockText = lines.slice(index, end + 1).join("\n");
+      if (blockText.includes(MARKER)) {
+        index = end + 1;
+        continue;
+      }
+
+      for (let cursor = index; cursor <= end; cursor += 1) {
+        kept.push(lines[cursor]);
+      }
+      index = end + 1;
+      continue;
+    }
+
+    kept.push(lines[index]);
+    index += 1;
+  }
+
+  return kept.join("\n").trimEnd().concat("\n");
 }
 
 export async function getHookInstallStatus(
@@ -401,9 +570,15 @@ export async function getHookInstallStatus(
   };
 }
 
+export interface InstallHooksOptions {
+  // 仅对 Codex 生效：检测到非 CodePulse 的 notify 已存在时，是否覆盖。
+  force?: boolean;
+}
+
 export async function installHooks(
   input: string | HookInstallOptions,
   target: HookTarget = "all",
+  installOptions: InstallHooksOptions = {},
 ): Promise<HookInstallStatus> {
   const options = normalizeHookOptions(input);
   const scriptPath = await writeHookScript(options);
@@ -418,7 +593,12 @@ export async function installHooks(
   }
 
   if (target === "codex" || target === "all") {
-    await installCodexNotify(codexConfigPath, scriptPath);
+    await installCodexNotify(
+      codexConfigPath,
+      scriptPath,
+      installOptions.force ?? false,
+      options.notifyBackupRoot ?? companionPreferencesRoot(),
+    );
   }
 
   return getHookInstallStatus(options);
@@ -450,8 +630,19 @@ export async function uninstallHooks(
     (target === "codex" || target === "all") &&
     (await exists(codexConfigPath))
   ) {
+    const backupRoot = options.notifyBackupRoot ?? companionPreferencesRoot();
     const codexConfig = await readFile(codexConfigPath, "utf8");
-    await writeFile(codexConfigPath, removeCodePulseCodexNotify(codexConfig));
+    // 移除 CodePulse 的 notify 后，如果此前 force 覆盖过用户既有 notify，则把它
+    // 还原回去，而不是留下空缺；还原后清理备份，保持幂等。
+    const savedNotify = await loadCodexNotifyBackup(backupRoot);
+    const withoutCodePulse = removeCodePulseCodexNotify(codexConfig);
+    const restored = savedNotify
+      ? restoreCodexNotify(withoutCodePulse, savedNotify)
+      : withoutCodePulse;
+    await writeFile(codexConfigPath, restored);
+    if (savedNotify) {
+      await clearCodexNotifyBackup(backupRoot);
+    }
   }
 
   return getHookInstallStatus(options);

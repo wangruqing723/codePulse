@@ -45,6 +45,7 @@ vi.mock("../lib/state", () => ({
 
 vi.mock("../lib/companion-preferences", () => ({
   companionPreferencesRoot: vi.fn(() => "/Users/me/.codepulse"),
+  loadCompanionEventRoot: vi.fn(),
   resolveCompanionPreferences: vi.fn(),
 }));
 

@@ -52,6 +52,26 @@ describe("companion state source", () => {
     ).toBeUndefined();
   });
 
+  it("threads the shared Raycast eventRoot into the darwin state config", async () => {
+    const { resolveCompanionStateSource } = await loadStateSourceModule();
+
+    const source = await resolveCompanionStateSource?.("darwin", {
+      stateRoot: "/tmp/codepulse-companion",
+      preferences,
+      eventRoot: "/Users/me/Library/Application Support/raycast/events",
+    });
+
+    expect(source).toMatchObject({
+      kind: "available",
+      platform: "darwin",
+      stateConfig: {
+        stateRoot: "/tmp/codepulse-companion",
+        eventRoot: "/Users/me/Library/Application Support/raycast/events",
+        preferences,
+      },
+    });
+  });
+
   it("uses resolveDefaultWslContext and builds WSL UNC roots on win32", async () => {
     const { resolveCompanionStateSource } = await loadStateSourceModule();
     const resolveDefaultWslContext = vi.fn(async () => ({

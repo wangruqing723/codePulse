@@ -9,6 +9,7 @@ export interface CompanionBridge {
   copyText(value: string): Promise<void>;
   forceExitCompanion(): void;
   getState(): Promise<FloatingViewModel | undefined>;
+  reportContentHeight(height: number): void;
   requestDock(edge: DockEdge): void;
   requestWindowAction(action: WindowAction): void;
   subscribe(listener: (model: FloatingViewModel) => void): () => void;
@@ -25,6 +26,9 @@ const bridge: CompanionBridge = {
     return ipcRenderer.invoke("companion:get-state") as Promise<
       FloatingViewModel | undefined
     >;
+  },
+  reportContentHeight(height) {
+    ipcRenderer.send("companion:content-height", height);
   },
   requestDock(edge) {
     ipcRenderer.send("companion:dock-request", edge);
