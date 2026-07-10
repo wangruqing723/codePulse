@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 
-import { AGENT_LABEL } from "../lib/types";
+import { sessionAgentLabel } from "../lib/session-labels";
 import type { CompanionBridge } from "./preload";
 import type {
   DisplaySessionStatus,
@@ -142,7 +142,7 @@ function renderSessionCard(session: FloatingSessionViewModel): string {
           <p class="session-title">${escapeHtml(session.session.title)}</p>
         </div>
         <div class="session-meta">
-          <span class="session-agent">${escapeHtml(AGENT_LABEL[session.session.agent])}</span>
+          <span class="session-agent">${escapeHtml(sessionAgentLabel(session.session))}</span>
           <span class="session-meta-separator" aria-hidden="true">·</span>
           <time class="session-duration">${escapeHtml(durationText)}</time>
         </div>

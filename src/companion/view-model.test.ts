@@ -41,6 +41,82 @@ function createSnapshot(sessions: SessionRecord[]): StateSnapshot {
 }
 
 describe("floating companion view model", () => {
+  it("summarizes delegated Codex work separately from user sessions", async () => {
+    const { buildFloatingViewModel, statusText } = await loadViewModelModule();
+    const snapshot = createSnapshot([
+      createSession({ id: "running-user", status: "running" }),
+      createSession({
+        id: "running-delegated",
+        status: "running",
+        origin: "delegated",
+      } as Partial<SessionRecord>),
+    ]);
+
+    const model = buildFloatingViewModel?.(snapshot, { platform: "darwin" });
+
+    expect(statusText?.(model as never)).toBe("🟢 1 运行中  🟢 1 委托中");
+    expect(model?.summaryItems).toEqual([
+      { status: "running", statusTone: "green", count: 1, label: "运行中" },
+      { status: "running", statusTone: "green", count: 1, label: "委托中" },
+    ]);
+  });
+
+  it("uses delegated running sessions for the dominant model status", async () => {
+    const { buildFloatingViewModel, statusText } = await loadViewModelModule();
+    const snapshot = createSnapshot([
+      createSession({
+        id: "running-delegated",
+        status: "running",
+        origin: "delegated",
+      }),
+    ]);
+
+    const model = buildFloatingViewModel?.(snapshot, { platform: "darwin" });
+
+    expect(model?.status).toBe("running");
+    expect(model?.count).toBe(1);
+    expect(model?.sessions).toHaveLength(1);
+    expect(model?.summaryItems).toEqual([
+      { status: "running", statusTone: "green", count: 1, label: "委托中" },
+    ]);
+    expect(statusText?.(model as never)).toBe("🟢 1 委托中");
+  });
+
+  it("orders delegated error and waiting before user done globally", async () => {
+    const { buildFloatingViewModel, statusText } = await loadViewModelModule();
+    const snapshot = createSnapshot([
+      createSession({ id: "done-user", status: "done" }),
+      createSession({
+        id: "error-delegated",
+        status: "error",
+        origin: "delegated",
+      }),
+      createSession({
+        id: "waiting-delegated",
+        status: "waiting",
+        origin: "delegated",
+      }),
+    ]);
+
+    const model = buildFloatingViewModel?.(snapshot, { platform: "darwin" });
+
+    expect(model?.status).toBe("error");
+    expect(model?.count).toBe(1);
+    expect(model?.summaryItems).toEqual([
+      { status: "error", statusTone: "red", count: 1, label: "委托出错" },
+      {
+        status: "waiting",
+        statusTone: "yellow",
+        count: 1,
+        label: "委托待确认",
+      },
+      { status: "done", statusTone: "blue", count: 1, label: "完成" },
+    ]);
+    expect(statusText?.(model as never)).toBe(
+      "🔴 1 委托出错  🟡 1 委托待确认  🔵 1 完成",
+    );
+  });
+
   it("summarizes only the four display statuses with error first", async () => {
     const { buildFloatingViewModel, statusText } = await loadViewModelModule();
     const snapshot = createSnapshot([

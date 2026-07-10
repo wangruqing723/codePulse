@@ -9,7 +9,12 @@ import {
   projectNameFromCwd,
 } from "./paths";
 import { isoFromMtime } from "./time";
-import type { AgentKind, SessionRecord, SessionStatus } from "./types";
+import type {
+  AgentKind,
+  SessionOrigin,
+  SessionRecord,
+  SessionStatus,
+} from "./types";
 
 const RUNNING_MTIME_WINDOW_MS = 30_000;
 const RECENT_EVENT_LINES = 5_000;
@@ -166,6 +171,14 @@ export function isCodexSubagentMeta(
 
   const source = asObject(metaPayload.source);
   return !!source && source.subagent !== undefined;
+}
+
+export function codexSessionOrigin(
+  metaPayload: JsonObject | undefined,
+): SessionOrigin {
+  return stringValue(metaPayload?.originator) === "Claude Code"
+    ? "delegated"
+    : "user";
 }
 
 export function inferClaudeStatus(
@@ -577,6 +590,7 @@ async function scanClaudeFile(
     agent: "claude",
     status,
     source: "passive",
+    origin: "user",
     cwd,
     projectName: projectNameFromCwd(cwd, "Claude"),
     transcriptPath: filePath,
@@ -638,6 +652,7 @@ async function scanCodexFile(
     agent: "codex",
     status,
     source: "passive",
+    origin: codexSessionOrigin(metaPayload),
     cwd,
     projectName: projectNameFromCwd(cwd, "Codex"),
     transcriptPath: filePath,

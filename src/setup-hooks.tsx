@@ -25,14 +25,23 @@ import {
   CodexNotifyConflictError,
   getHookInstallStatus,
   installHooks,
+  repairCodexImportedClaudeHooks,
   uninstallHooks,
   type HookInstallStatus,
+  type RepairCodexImportedHooksResult,
   type HookTarget,
 } from "./lib/hooks";
+import {
+  codexImportHealthPresentation,
+  invalidCodexImportHookStatus,
+  runIndependentHookStatusRefresh,
+} from "./lib/codex-import-ui";
 import type { Preferences } from "./lib/types";
 
 type SetupTarget = Exclude<HookTarget, "all">;
 type RaycastToast = Awaited<ReturnType<typeof showToast>>;
+type RepairCodexImportedHooksAction =
+  () => Promise<RepairCodexImportedHooksResult>;
 
 const TARGETS: Array<{
   id: SetupTarget;
@@ -121,6 +130,74 @@ export async function handleLaunchCompanion(
   toast.message = result.message;
 }
 
+export async function handleRepairCodexImportedHooks(
+  repair: RepairCodexImportedHooksAction,
+  refresh: () => Promise<void>,
+): Promise<void> {
+  const shouldRepair = await confirmAlert({
+    title: "修复 Codex 导入冲突?",
+    message:
+      "只会移除 Codex hooks.json 中以 Claude 身份运行的 CodePulse Hook；其他导入配置保持不变，并会在修改前自动创建备份。",
+    primaryAction: {
+      title: "修复",
+      style: Alert.ActionStyle.Destructive,
+    },
+    dismissAction: {
+      title: "取消",
+    },
+  });
+
+  if (!shouldRepair) {
+    return;
+  }
+
+  try {
+    const result = await repair();
+    const latestHealth = result.status.codexImportedHooks;
+    if (latestHealth.state === "invalid") {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Codex 导入冲突修复失败",
+        message: latestHealth.error ?? "无法检查 Codex hooks.json",
+      });
+    } else if (latestHealth.state === "conflict") {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Codex 导入冲突仍存在",
+        message: `仍有 ${latestHealth.count} 项冲突，请刷新后重试。`,
+      });
+    } else if (result.removedCount > 0) {
+      await showToast({
+        style: Toast.Style.Success,
+        title: `已修复 ${result.removedCount} 项 Codex 导入冲突`,
+        message: result.backupPath ? `备份：${result.backupPath}` : undefined,
+      });
+    } else {
+      await showToast({
+        style: Toast.Style.Success,
+        title: "Codex 导入冲突已不存在",
+        message: "无需修复",
+      });
+    }
+  } catch (error) {
+    await showToast({
+      style: Toast.Style.Failure,
+      title: "Codex 导入冲突修复失败",
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  try {
+    await refresh();
+  } catch (error) {
+    await showToast({
+      style: Toast.Style.Failure,
+      title: "Codex 导入状态刷新失败",
+      message: error instanceof Error ? error.message : String(error),
+    }).catch(() => undefined);
+  }
+}
+
 function updateCompanionProgressToast(
   toast: RaycastToast,
   progress: CompanionBootstrapProgress,
@@ -188,12 +265,27 @@ export default function Command() {
   const refresh = useCallback(async () => {
     setIsLoading(true);
     try {
-      await saveCompanionPreferencesSnapshot(
-        companionPreferencesRoot(),
-        preferences,
-        eventsPath(environment.supportPath),
-      );
-      setStatus(await getHookInstallStatus(environment.supportPath));
+      await runIndependentHookStatusRefresh({
+        loadHookStatus: () => getHookInstallStatus(environment.supportPath),
+        commitHookStatus: setStatus,
+        commitHookError: (error) => {
+          setStatus((current) => invalidCodexImportHookStatus(current, error));
+        },
+        runPrimaryRefresh: async () => {
+          await saveCompanionPreferencesSnapshot(
+            companionPreferencesRoot(),
+            preferences,
+            eventsPath(environment.supportPath),
+          );
+        },
+        onPrimaryError: async (error) => {
+          await showToast({
+            style: Toast.Style.Failure,
+            title: "CodePulse Center 刷新失败",
+            message: error instanceof Error ? error.message : String(error),
+          });
+        },
+      });
     } finally {
       setIsLoading(false);
     }
@@ -239,6 +331,15 @@ export default function Command() {
       });
     }
   }, [refresh]);
+
+  const repairImportedHooks = useCallback(
+    async () =>
+      handleRepairCodexImportedHooks(
+        () => repairCodexImportedClaudeHooks(environment.supportPath),
+        refresh,
+      ),
+    [refresh],
+  );
 
   useEffect(() => {
     void refresh();
@@ -356,6 +457,18 @@ export default function Command() {
     [],
   );
 
+  const importedHooksHealth = codexImportHealthPresentation(
+    status?.codexImportedHooks,
+  );
+  const importedHooksIcon =
+    importedHooksHealth.state === "loading"
+      ? Icon.CircleProgress
+      : importedHooksHealth.state === "clean"
+        ? Icon.CheckCircle
+        : importedHooksHealth.state === "conflict"
+          ? Icon.Warning
+          : Icon.XMarkCircle;
+
   return (
     <List isLoading={isLoading} navigationTitle="CodePulse Center">
       <List.Item
@@ -387,6 +500,23 @@ export default function Command() {
               onAction={forceExitCompanion}
             />
           </ActionPanel>
+        }
+      />
+      <List.Item
+        icon={importedHooksIcon}
+        title="Codex 导入兼容性"
+        subtitle={importedHooksHealth.error}
+        accessories={[{ text: importedHooksHealth.statusText }]}
+        actions={
+          importedHooksHealth.canRepair ? (
+            <ActionPanel>
+              <Action
+                icon={Icon.WrenchScrewdriver}
+                title="修复 Codex 导入冲突"
+                onAction={repairImportedHooks}
+              />
+            </ActionPanel>
+          ) : undefined
         }
       />
       {TARGETS.map((target) => {

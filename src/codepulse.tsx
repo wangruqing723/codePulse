@@ -24,16 +24,26 @@ import {
   companionPreferencesRoot,
   saveCompanionPreferencesSnapshot,
 } from "./lib/companion-preferences";
-import { itemSubtitle } from "./lib/session-labels";
+import {
+  itemSubtitle,
+  partitionSessionsByOrigin,
+  sessionAgentLabel,
+} from "./lib/session-labels";
 import { buildState, eventsPath } from "./lib/state";
 import { showToastIfAvailable } from "./lib/toast";
+import {
+  codexImportConflictWarning,
+  invalidCodexImportHookStatus,
+  openCodePulseCenter,
+  runIndependentHookStatusRefresh,
+} from "./lib/codex-import-ui";
 import type {
   Preferences,
   SessionRecord,
   SessionStatus,
   StateSnapshot,
 } from "./lib/types";
-import { AGENT_LABEL, STATUS_ICON, STATUS_LABEL } from "./lib/types";
+import { STATUS_ICON, STATUS_LABEL } from "./lib/types";
 
 const REFRESH_INTERVAL_MS = 5_000;
 
@@ -52,6 +62,20 @@ const SECTION_ORDER: SessionStatus[] = [
   "done",
   "idle",
 ];
+
+const DELEGATED_STATUS_LABEL: Record<SessionStatus, string> = {
+  running: "委托中",
+  waiting: "委托待确认",
+  done: "委托完成",
+  idle: "委托空闲",
+  error: "委托出错",
+};
+
+interface SessionSection {
+  key: string;
+  title: string;
+  sessions: SessionRecord[];
+}
 
 type SetupTarget = Exclude<HookTarget, "all">;
 
@@ -94,6 +118,53 @@ function menuBarTitle(
   return count > 0 ? `${icon}${count}` : icon;
 }
 
+function countsForSessions(
+  sessions: SessionRecord[],
+): Record<SessionStatus, number> {
+  return {
+    running: sessions.filter((session) => session.status === "running").length,
+    waiting: sessions.filter((session) => session.status === "waiting").length,
+    done: sessions.filter((session) => session.status === "done").length,
+    idle: sessions.filter((session) => session.status === "idle").length,
+    error: sessions.filter((session) => session.status === "error").length,
+  };
+}
+
+function snapshotForSessions(
+  snapshot: StateSnapshot | undefined,
+  sessions: SessionRecord[],
+): StateSnapshot | undefined {
+  return snapshot
+    ? {
+        ...snapshot,
+        sessions,
+        counts: countsForSessions(sessions),
+      }
+    : undefined;
+}
+
+function sectionForStatus(
+  sessions: SessionRecord[],
+  kind: "user" | "delegated",
+  status: SessionStatus,
+): SessionSection | undefined {
+  const matching = sessions.filter((session) => session.status === status);
+  if (matching.length === 0) {
+    return undefined;
+  }
+
+  const label =
+    kind === "delegated"
+      ? DELEGATED_STATUS_LABEL[status]
+      : STATUS_LABEL[status];
+
+  return {
+    key: `${kind}-${status}`,
+    title: `${STATUS_ICON[status]} ${label} (${matching.length})`,
+    sessions: matching,
+  };
+}
+
 function iconForStatus(status: SessionStatus): Icon {
   if (status === "waiting") return Icon.ExclamationMark;
   if (status === "error") return Icon.XMarkCircle;
@@ -118,7 +189,7 @@ function SessionItem({ session }: { session: SessionRecord }) {
     <MenuBarExtra.Submenu
       key={session.id}
       icon={iconForStatus(session.status)}
-      title={`${session.projectName} · ${AGENT_LABEL[session.agent]} · ${itemSubtitle(session)}`}
+      title={`${session.projectName} · ${sessionAgentLabel(session)} · ${itemSubtitle(session)}`}
     >
       <MenuBarExtra.Item
         title="切回 iTerm2"
@@ -168,25 +239,42 @@ export default function Command() {
         setIsLoading(true);
       }
       try {
-        await saveCompanionPreferencesSnapshot(
-          companionPreferencesRoot(),
-          preferences,
-          eventsPath(environment.supportPath),
-        );
-        const result = await buildState(environment.supportPath, preferences);
-        const nextHookStatus = await getHookInstallStatus(
-          environment.supportPath,
-        );
-        await notifyTransitions(result.previous, result.snapshot);
-        if (mountedRef.current) {
-          setSnapshot(result.snapshot);
-          setHookStatus(nextHookStatus);
-        }
-      } catch (error) {
-        await showToastIfAvailable({
-          style: Toast.Style.Failure,
-          title: "CodePulse 刷新失败",
-          message: error instanceof Error ? error.message : String(error),
+        await runIndependentHookStatusRefresh({
+          loadHookStatus: () => getHookInstallStatus(environment.supportPath),
+          commitHookStatus: (nextHookStatus) => {
+            if (mountedRef.current) {
+              setHookStatus(nextHookStatus);
+            }
+          },
+          commitHookError: (error) => {
+            if (mountedRef.current) {
+              setHookStatus((current) =>
+                invalidCodexImportHookStatus(current, error),
+              );
+            }
+          },
+          runPrimaryRefresh: async () => {
+            await saveCompanionPreferencesSnapshot(
+              companionPreferencesRoot(),
+              preferences,
+              eventsPath(environment.supportPath),
+            );
+            const result = await buildState(
+              environment.supportPath,
+              preferences,
+            );
+            await notifyTransitions(result.previous, result.snapshot);
+            if (mountedRef.current) {
+              setSnapshot(result.snapshot);
+            }
+          },
+          onPrimaryError: async (error) => {
+            await showToastIfAvailable({
+              style: Toast.Style.Failure,
+              title: "CodePulse 刷新失败",
+              message: error instanceof Error ? error.message : String(error),
+            });
+          },
         });
       } finally {
         refreshingRef.current = false;
@@ -323,31 +411,39 @@ export default function Command() {
     };
   }, [refresh]);
 
-  const grouped = useMemo(() => {
+  const presentation = useMemo(() => {
     const sessions = snapshot?.sessions ?? [];
-    return SECTION_ORDER.map((status) => ({
-      status,
-      sessions: sessions.filter((session) => session.status === status),
-    })).filter((section) => section.sessions.length > 0);
+    const { userSessions, delegatedSessions } =
+      partitionSessionsByOrigin(sessions);
+
+    return {
+      userSnapshot: snapshotForSessions(snapshot, userSessions),
+      sections: SECTION_ORDER.flatMap((status) =>
+        [
+          sectionForStatus(userSessions, "user", status),
+          sectionForStatus(delegatedSessions, "delegated", status),
+        ].filter((section): section is SessionSection => !!section),
+      ),
+    };
   }, [snapshot]);
+  const importedHooksWarning = codexImportConflictWarning(
+    hookStatus?.codexImportedHooks,
+  );
 
   return (
     <MenuBarExtra
-      title={menuBarTitle(snapshot, preferences.menuBarStyle)}
+      title={menuBarTitle(presentation.userSnapshot, preferences.menuBarStyle)}
       isLoading={isLoading}
     >
-      {grouped.length === 0 ? (
+      {presentation.sections.length === 0 ? (
         <MenuBarExtra.Item
           icon={Icon.Circle}
           title="暂无近期会话"
           subtitle="Claude Code / Codex"
         />
       ) : (
-        grouped.map((section) => (
-          <MenuBarExtra.Section
-            key={section.status}
-            title={`${STATUS_ICON[section.status]} ${STATUS_LABEL[section.status]} (${section.sessions.length})`}
-          >
+        presentation.sections.map((section) => (
+          <MenuBarExtra.Section key={section.key} title={section.title}>
             {section.sessions.map((session) => (
               <SessionItem key={session.id} session={session} />
             ))}
@@ -356,6 +452,13 @@ export default function Command() {
       )}
 
       <MenuBarExtra.Section>
+        {importedHooksWarning ? (
+          <MenuBarExtra.Item
+            icon={Icon.Warning}
+            title={importedHooksWarning}
+            onAction={() => openCodePulseCenter(open)}
+          />
+        ) : null}
         <MenuBarExtra.Item
           icon={Icon.ArrowClockwise}
           title="刷新"
@@ -392,11 +495,7 @@ export default function Command() {
           <MenuBarExtra.Item
             icon={Icon.AppWindowSidebarLeft}
             title="打开 CodePulse Center"
-            onAction={async () => {
-              await open(
-                "raycast://extensions/code-pulse/code-pulse/setup-hooks",
-              );
-            }}
+            onAction={() => openCodePulseCenter(open)}
           />
         </MenuBarExtra.Submenu>
       </MenuBarExtra.Section>

@@ -1,5 +1,34 @@
 import { formatElapsed, formatRelative } from "./time";
 import type { SessionRecord } from "./types";
+import { AGENT_LABEL } from "./types";
+
+export function isDelegatedSession(session: SessionRecord): boolean {
+  return session.agent === "codex" && session.origin === "delegated";
+}
+
+export function partitionSessionsByOrigin(sessions: SessionRecord[]): {
+  userSessions: SessionRecord[];
+  delegatedSessions: SessionRecord[];
+} {
+  const userSessions: SessionRecord[] = [];
+  const delegatedSessions: SessionRecord[] = [];
+
+  for (const session of sessions) {
+    if (isDelegatedSession(session)) {
+      delegatedSessions.push(session);
+    } else {
+      userSessions.push(session);
+    }
+  }
+
+  return { userSessions, delegatedSessions };
+}
+
+export function sessionAgentLabel(session: SessionRecord): string {
+  return isDelegatedSession(session)
+    ? "Codex（Claude Code 委托）"
+    : AGENT_LABEL[session.agent];
+}
 
 export function itemSubtitle(session: SessionRecord, now = Date.now()): string {
   if (session.status === "running") {

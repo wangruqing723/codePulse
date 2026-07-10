@@ -1,4 +1,5 @@
 import { toWslUncPath } from "../lib/wsl";
+import { isDelegatedSession } from "../lib/session-labels";
 import {
   STATUS_LABEL,
   STATUS_ICON,
@@ -78,14 +79,21 @@ const SUMMARY_LABEL: Record<DisplaySessionStatus, string> = {
   waiting: "等待",
 };
 
+const DELEGATED_SUMMARY_LABEL: Record<DisplaySessionStatus, string> = {
+  running: "委托中",
+  done: "委托完成",
+  error: "委托出错",
+  waiting: "委托待确认",
+};
+
 function dominantStatus(snapshot: StateSnapshot | undefined): FloatingStatus {
-  const counts = snapshot?.counts;
-  if (!counts) {
+  const sessions = snapshot?.sessions ?? [];
+  if (sessions.length === 0) {
     return "empty";
   }
 
   for (const status of DISPLAY_STATUS_ORDER) {
-    if ((counts[status] ?? 0) > 0) {
+    if (sessions.some((session) => session.status === status)) {
       return status;
     }
   }
@@ -101,7 +109,10 @@ function statusCount(
     return 0;
   }
 
-  return snapshot?.counts[status] ?? 0;
+  return (
+    snapshot?.sessions.filter((session) => session.status === status).length ??
+    0
+  );
 }
 
 export function sessionCopyActions(
@@ -140,43 +151,59 @@ export function statusText(model: FloatingViewModel): string {
     return "WSL 不可用";
   }
 
+  const summaries = model.summaryItems?.map(
+    (item) => `${STATUS_ICON[item.status]} ${item.count} ${item.label}`,
+  );
+
+  if (summaries && summaries.length > 0) {
+    return summaries.join("  ");
+  }
+
   if (model.status === "empty") {
     return "暂无活跃会话";
   }
 
-  const summaries = DISPLAY_STATUS_ORDER.flatMap((status) => {
-    const count = model.sessions.filter(
-      (session) => session.displayStatus === status,
-    ).length;
-
-    return count > 0
-      ? [`${STATUS_ICON[status]} ${count} ${SUMMARY_LABEL[status]}`]
-      : [];
-  });
-
-  return summaries.length > 0
-    ? summaries.join("  ")
-    : `${STATUS_LABEL[model.status]} ${model.count} 个`;
+  return `${STATUS_LABEL[model.status]} ${model.count} 个`;
 }
 
 function statusSummaryItems(
   sessions: FloatingSessionViewModel[],
 ): FloatingStatusSummaryItem[] {
+  const userSessions = sessions.filter(
+    (session) => !isDelegatedSession(session.session),
+  );
+  const delegatedSessions = sessions.filter((session) =>
+    isDelegatedSession(session.session),
+  );
+
   return DISPLAY_STATUS_ORDER.flatMap((status) => {
-    const count = sessions.filter(
+    const items: FloatingStatusSummaryItem[] = [];
+    const userCount = userSessions.filter(
+      (session) => session.displayStatus === status,
+    ).length;
+    const delegatedCount = delegatedSessions.filter(
       (session) => session.displayStatus === status,
     ).length;
 
-    return count > 0
-      ? [
-          {
-            status,
-            statusTone: STATUS_TONE[status],
-            count,
-            label: SUMMARY_LABEL[status],
-          },
-        ]
-      : [];
+    if (userCount > 0) {
+      items.push({
+        status,
+        statusTone: STATUS_TONE[status],
+        count: userCount,
+        label: SUMMARY_LABEL[status],
+      });
+    }
+
+    if (delegatedCount > 0) {
+      items.push({
+        status,
+        statusTone: STATUS_TONE[status],
+        count: delegatedCount,
+        label: DELEGATED_SUMMARY_LABEL[status],
+      });
+    }
+
+    return items;
   });
 }
 

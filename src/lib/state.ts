@@ -8,6 +8,7 @@ import {
 import { scanSessions, type ScanRoots } from "./scanners";
 import { toPositiveInt } from "./time";
 import type {
+  AgentKind,
   HookEvent,
   Preferences,
   SessionRecord,
@@ -160,6 +161,45 @@ function eventName(event: HookEvent): string {
   return (event.eventName ?? "").toLowerCase();
 }
 
+function agentFromTranscriptPath(
+  transcriptPath: string | undefined,
+): AgentKind | undefined {
+  if (!transcriptPath) {
+    return undefined;
+  }
+
+  const segments = transcriptPath.replaceAll("\\", "/").split("/");
+  for (let index = 0; index < segments.length - 1; index += 1) {
+    if (segments[index] === ".codex" && segments[index + 1] === "sessions") {
+      return "codex";
+    }
+
+    if (segments[index] === ".claude" && segments[index + 1] === "projects") {
+      return "claude";
+    }
+  }
+
+  return undefined;
+}
+
+function agentForHookEvent(
+  event: HookEvent,
+  sessions: Map<string, SessionRecord>,
+): AgentKind {
+  const matchedByTranscript = event.transcriptPath
+    ? freshestSession(
+        sessions.values(),
+        (session) => session.transcriptPath === event.transcriptPath,
+      )
+    : undefined;
+
+  return (
+    matchedByTranscript?.agent ??
+    agentFromTranscriptPath(event.transcriptPath) ??
+    event.agent
+  );
+}
+
 function shouldIgnoreHookEvent(
   event: HookEvent,
   previous: SessionRecord | undefined,
@@ -270,44 +310,54 @@ export function mergeHookEvents(
   );
 
   for (const event of sortedEvents) {
-    if (!matchesMonitorPrefixes(event.cwd, monitorPrefixes)) {
+    const agent = agentForHookEvent(event, byId);
+    const normalizedEvent = agent === event.agent ? event : { ...event, agent };
+
+    if (!matchesMonitorPrefixes(normalizedEvent.cwd, monitorPrefixes)) {
       continue;
     }
 
-    const id = sessionIdForHookEvent(event, byId);
+    const id = sessionIdForHookEvent(normalizedEvent, byId);
     if (!id) {
       continue;
     }
 
     const previous = byId.get(id);
-    if (shouldIgnoreHookEvent(event, previous, now)) {
+    if (shouldIgnoreHookEvent(normalizedEvent, previous, now)) {
       continue;
     }
 
-    const status = event.kind;
-    const updatedAt = event.timestamp;
+    const status = normalizedEvent.kind;
+    const updatedAt = normalizedEvent.timestamp;
 
     byId.set(id, {
       ...previous,
       id,
-      agent: event.agent,
+      agent,
       status,
       source: "hook",
-      cwd: event.cwd ?? previous?.cwd,
+      cwd: normalizedEvent.cwd ?? previous?.cwd,
       projectName: projectNameFromCwd(
-        event.cwd ?? previous?.cwd,
-        previous?.projectName ?? event.agent,
+        normalizedEvent.cwd ?? previous?.cwd,
+        previous?.projectName ?? agent,
       ),
-      transcriptPath: event.transcriptPath ?? previous?.transcriptPath,
+      transcriptPath:
+        normalizedEvent.transcriptPath ?? previous?.transcriptPath,
       title: projectNameFromCwd(
-        event.cwd ?? previous?.cwd,
-        previous?.title ?? event.agent,
+        normalizedEvent.cwd ?? previous?.cwd,
+        previous?.title ?? agent,
       ),
-      lastEventAt: event.timestamp,
+      lastEventAt: normalizedEvent.timestamp,
       updatedAt,
-      runningSince: runningSinceForHookEvent(status, previous, event.timestamp),
-      completedAt: status === "done" ? event.timestamp : previous?.completedAt,
-      errorMessage: status === "error" ? event.message : previous?.errorMessage,
+      runningSince: runningSinceForHookEvent(
+        status,
+        previous,
+        normalizedEvent.timestamp,
+      ),
+      completedAt:
+        status === "done" ? normalizedEvent.timestamp : previous?.completedAt,
+      errorMessage:
+        status === "error" ? normalizedEvent.message : previous?.errorMessage,
     });
   }
 

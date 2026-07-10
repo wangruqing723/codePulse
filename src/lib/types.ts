@@ -4,6 +4,8 @@ export type SessionStatus = "running" | "waiting" | "done" | "idle" | "error";
 
 export type SessionSource = "passive" | "hook";
 
+export type SessionOrigin = "user" | "delegated";
+
 export interface Preferences {
   activeWindowMinutes?: string;
   menuBarStyle?: "icon" | "count" | "session";
@@ -18,6 +20,7 @@ export interface SessionRecord {
   agent: AgentKind;
   status: SessionStatus;
   source: SessionSource;
+  origin?: SessionOrigin;
   cwd?: string;
   projectName: string;
   transcriptPath?: string;

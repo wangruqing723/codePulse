@@ -1,6 +1,20 @@
+import { randomBytes } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
-import { chmod, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { TextDecoder } from "node:util";
+import {
+  chmod,
+  copyFile,
+  lstat,
+  mkdir,
+  open,
+  readFile,
+  readlink,
+  rename,
+  stat,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { exists } from "./files";
 import {
   clearCodexNotifyBackup,
@@ -12,6 +26,19 @@ import {
 const MARKER = "codepulse-hook";
 const TOML_TABLE_PATTERN = /^\s*\[/;
 const TOML_NOTIFY_PATTERN = /^\s*notify\s*=/;
+const INVALID_LOCK_STALE_MS = 5 * 60 * 1_000;
+const EXCLUSIVE_CREATE_ATTEMPTS = 100;
+const STRICT_UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
+
+export type CodexImportedHooksState = "clean" | "conflict" | "invalid";
+
+export interface CodexImportedHooksHealth {
+  state: CodexImportedHooksState;
+  hooksPath: string;
+  count: number;
+  eventNames: string[];
+  error?: string;
+}
 
 export interface HookInstallStatus {
   installed: boolean;
@@ -20,6 +47,7 @@ export interface HookInstallStatus {
   hookPath: string;
   claudeSettingsPath: string;
   codexConfigPath: string;
+  codexImportedHooks: CodexImportedHooksHealth;
 }
 
 export type HookTarget = "claude" | "codex" | "all";
@@ -29,9 +57,41 @@ export interface HookInstallOptions {
   eventRoot?: string;
   claudeSettingsPath?: string;
   codexConfigPath?: string;
+  codexHooksPath?: string;
   // force 覆盖 Codex notify 时，被顶掉的原 notify 存放目录（默认 ~/.codepulse）。
   // 卸载时从这里读回并还原。可注入以便测试。
   notifyBackupRoot?: string;
+}
+
+export interface RepairCodexImportedHooksResult {
+  status: HookInstallStatus;
+  removedCount: number;
+  eventNames: string[];
+  backupPath?: string;
+}
+
+export type RepairCodexImportedHooksPhase =
+  | "after-lock-open"
+  | "after-lock-write"
+  | "locked"
+  | "before-stale-takeover"
+  | "before-backup"
+  | "backup-created"
+  | "temp-created"
+  | "before-commit"
+  | "before-final-path-stat"
+  | "committed"
+  | "before-release"
+  | "before-release-path-stat";
+
+type RepairRandomPurpose = "lock" | "backup" | "temp" | "stale";
+
+/** @internal 仅用于确定性文件系统测试；生产调用保持单参数。 */
+export interface RepairCodexImportedHooksRuntime {
+  now?: () => number;
+  randomToken?: (purpose: RepairRandomPurpose) => string;
+  isProcessAlive?: (pid: number) => boolean;
+  onPhase?: (phase: RepairCodexImportedHooksPhase) => void | Promise<void>;
 }
 
 function hookPath(supportPath: string): string {
@@ -50,6 +110,367 @@ export function normalizeHookOptions(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function errorCode(error: unknown): string | undefined {
+  return isRecord(error) && typeof error.code === "string"
+    ? error.code
+    : undefined;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function cleanCodexImportedHooksHealth(
+  hooksPath: string,
+): CodexImportedHooksHealth {
+  return {
+    state: "clean",
+    hooksPath,
+    count: 0,
+    eventNames: [],
+  };
+}
+
+function invalidCodexImportedHooksHealth(
+  hooksPath: string,
+  error: unknown,
+): CodexImportedHooksHealth {
+  return {
+    state: "invalid",
+    hooksPath,
+    count: 0,
+    eventNames: [],
+    error: `无法读取或解析 Codex hooks.json：${errorMessage(error)}`,
+  };
+}
+
+function parseStrictJsonBuffer(content: Buffer): unknown {
+  return JSON.parse(STRICT_UTF8_DECODER.decode(content)) as unknown;
+}
+
+class UnsafeHooksSymlinkError extends Error {
+  constructor(filePath: string, targetPath: string) {
+    super(
+      `Codex hooks.json 是符号链接，CodePulse 不会自动修复。请直接编辑目标文件：${targetPath}（链接：${filePath}）`,
+    );
+    this.name = "UnsafeHooksSymlinkError";
+  }
+}
+
+async function unsafeSymlinkError(filePath: string): Promise<Error> {
+  let targetPath = "未知目标";
+  try {
+    const target = await readlink(filePath);
+    targetPath = path.isAbsolute(target)
+      ? target
+      : path.resolve(path.dirname(filePath), target);
+  } catch {
+    // lstat 已确认是 symlink；readlink 失败时仍拒绝写盘。
+  }
+  return new UnsafeHooksSymlinkError(filePath, targetPath);
+}
+
+async function assertRepairPathIsNotSymlink(filePath: string): Promise<void> {
+  const info = await lstat(filePath, { bigint: true });
+  if (info.isSymbolicLink()) {
+    throw await unsafeSymlinkError(filePath);
+  }
+}
+
+// 只解析命令开头的直接 executable 与参数。控制符后的其他 shell 命令不参与匹配，
+// 也不会把 echo/sh/env 等包装命令里的字符串误认为 CodePulse executable。
+function parseFirstShellCommand(command: string): string[] | undefined {
+  const words: string[] = [];
+  let current = "";
+  let wordStarted = false;
+  let quote: "single" | "double" | undefined;
+
+  const finishWord = () => {
+    if (!wordStarted) {
+      return;
+    }
+    words.push(current);
+    current = "";
+    wordStarted = false;
+  };
+
+  for (let index = 0; index < command.length; index += 1) {
+    const character = command[index];
+
+    if (quote === "single") {
+      if (character === "'") {
+        quote = undefined;
+      } else {
+        current += character;
+      }
+      wordStarted = true;
+      continue;
+    }
+
+    if (quote === "double") {
+      if (character === '"') {
+        quote = undefined;
+        wordStarted = true;
+        continue;
+      }
+      if (character === "\\") {
+        const next = command[index + 1];
+        if (
+          next === "$" ||
+          next === "`" ||
+          next === '"' ||
+          next === "\\" ||
+          next === "\n"
+        ) {
+          index += 1;
+          if (next !== "\n") {
+            current += next;
+          }
+        } else {
+          current += "\\";
+        }
+        wordStarted = true;
+        continue;
+      }
+      current += character;
+      wordStarted = true;
+      continue;
+    }
+
+    if (character === "'" || character === '"') {
+      quote = character === "'" ? "single" : "double";
+      wordStarted = true;
+      continue;
+    }
+
+    if (character === "\\") {
+      const next = command[index + 1];
+      if (next === undefined) {
+        return undefined;
+      }
+      if (/\s/.test(next) || "'\"\\;&|<>()".includes(next)) {
+        index += 1;
+        current += next;
+      } else {
+        // Windows 的无引号路径以反斜杠分隔；仅在下一个字符确实需要 shell
+        // 转义时才移除反斜杠，避免把 C:\\... 拼成一个错误 basename。
+        current += "\\";
+      }
+      wordStarted = true;
+      continue;
+    }
+
+    if (
+      character === ";" ||
+      character === "&" ||
+      character === "|" ||
+      character === "<" ||
+      character === ">" ||
+      character === "(" ||
+      character === ")" ||
+      character === "\n" ||
+      character === "\r"
+    ) {
+      finishWord();
+      break;
+    }
+
+    if (/\s/.test(character)) {
+      finishWord();
+      continue;
+    }
+
+    current += character;
+    wordStarted = true;
+  }
+
+  if (quote) {
+    return undefined;
+  }
+
+  finishWord();
+  return words;
+}
+
+function isCodexImportedClaudeHookLeaf(value: unknown): boolean {
+  if (
+    !isRecord(value) ||
+    value.type !== "command" ||
+    typeof value.command !== "string"
+  ) {
+    return false;
+  }
+
+  const words = parseFirstShellCommand(value.command);
+  if (!words || words.length < 2) {
+    return false;
+  }
+
+  const executable = path.posix.basename(words[0].replaceAll("\\", "/"));
+  return executable === MARKER && words[1] === "claude";
+}
+
+interface CodexImportedHooksMatchSummary {
+  count: number;
+  eventNames: string[];
+}
+
+function inspectCodexImportedClaudeHooks(
+  value: unknown,
+): CodexImportedHooksMatchSummary {
+  if (!isRecord(value) || !isRecord(value.hooks)) {
+    return { count: 0, eventNames: [] };
+  }
+
+  let count = 0;
+  const eventNames: string[] = [];
+
+  for (const [eventName, groups] of Object.entries(value.hooks)) {
+    if (!Array.isArray(groups)) {
+      continue;
+    }
+
+    let eventCount = 0;
+    for (const group of groups) {
+      if (!isRecord(group) || !Array.isArray(group.hooks)) {
+        continue;
+      }
+
+      for (const leaf of group.hooks) {
+        if (isCodexImportedClaudeHookLeaf(leaf)) {
+          eventCount += 1;
+        }
+      }
+    }
+
+    if (eventCount > 0) {
+      count += eventCount;
+      eventNames.push(eventName);
+    }
+  }
+
+  return { count, eventNames };
+}
+
+function codexImportedHooksHealthFromValue(
+  hooksPath: string,
+  value: unknown,
+): CodexImportedHooksHealth {
+  const summary = inspectCodexImportedClaudeHooks(value);
+  return summary.count > 0
+    ? {
+        state: "conflict",
+        hooksPath,
+        count: summary.count,
+        eventNames: summary.eventNames,
+      }
+    : cleanCodexImportedHooksHealth(hooksPath);
+}
+
+async function readCodexImportedHooksHealth(
+  hooksPath: string,
+): Promise<CodexImportedHooksHealth> {
+  let content: Buffer;
+  try {
+    content = await readFile(hooksPath);
+  } catch (error) {
+    return errorCode(error) === "ENOENT"
+      ? cleanCodexImportedHooksHealth(hooksPath)
+      : invalidCodexImportedHooksHealth(hooksPath, error);
+  }
+
+  try {
+    return codexImportedHooksHealthFromValue(
+      hooksPath,
+      parseStrictJsonBuffer(content),
+    );
+  } catch (error) {
+    return invalidCodexImportedHooksHealth(hooksPath, error);
+  }
+}
+
+interface RemoveCodexImportedHooksResult {
+  value: unknown;
+  removedCount: number;
+  eventNames: string[];
+}
+
+function removeCodexImportedClaudeHookLeaves(
+  value: unknown,
+): RemoveCodexImportedHooksResult {
+  if (!isRecord(value) || !isRecord(value.hooks)) {
+    return { value, removedCount: 0, eventNames: [] };
+  }
+
+  const originalHooks = value.hooks;
+  let nextHooks: Record<string, unknown> | undefined;
+  let removedCount = 0;
+  const eventNames: string[] = [];
+
+  for (const [eventName, groups] of Object.entries(originalHooks)) {
+    if (!Array.isArray(groups)) {
+      continue;
+    }
+
+    let eventRemovedCount = 0;
+    const nextGroups: unknown[] = [];
+
+    for (const group of groups) {
+      if (!isRecord(group) || !Array.isArray(group.hooks)) {
+        nextGroups.push(group);
+        continue;
+      }
+
+      const keptLeaves = group.hooks.filter((leaf) => {
+        if (!isCodexImportedClaudeHookLeaf(leaf)) {
+          return true;
+        }
+        eventRemovedCount += 1;
+        return false;
+      });
+
+      if (keptLeaves.length === group.hooks.length) {
+        nextGroups.push(group);
+        continue;
+      }
+
+      const nextGroup = { ...group, hooks: keptLeaves };
+      const groupKeys = Object.keys(nextGroup);
+      if (
+        keptLeaves.length === 0 &&
+        groupKeys.length === 1 &&
+        groupKeys[0] === "hooks"
+      ) {
+        continue;
+      }
+      nextGroups.push(nextGroup);
+    }
+
+    if (eventRemovedCount === 0) {
+      continue;
+    }
+
+    nextHooks ??= { ...originalHooks };
+    if (nextGroups.length === 0) {
+      delete nextHooks[eventName];
+    } else {
+      nextHooks[eventName] = nextGroups;
+    }
+    removedCount += eventRemovedCount;
+    eventNames.push(eventName);
+  }
+
+  if (!nextHooks) {
+    return { value, removedCount: 0, eventNames: [] };
+  }
+
+  return {
+    value: { ...value, hooks: nextHooks },
+    removedCount,
+    eventNames,
+  };
 }
 
 function shellQuote(value: string): string {
@@ -122,6 +543,15 @@ function parseArgJson() {
   }
 }
 
+function agentFromTranscriptPath(transcriptPath) {
+  const segments = String(transcriptPath || "").replaceAll("\\\\", "/").split("/");
+  for (let index = 0; index < segments.length - 1; index += 1) {
+    if (segments[index] === ".codex" && segments[index + 1] === "sessions") return "codex";
+    if (segments[index] === ".claude" && segments[index + 1] === "projects") return "claude";
+  }
+  return undefined;
+}
+
 function mapEvent(rawEvent) {
   const eventName = String(rawEvent || "").toLowerCase();
   if (eventName === "sessionstart") return undefined;
@@ -133,8 +563,10 @@ function mapEvent(rawEvent) {
 }
 
 try {
-  const agent = args[0] === "codex" ? "codex" : "claude";
+  const requestedAgent = args[0] === "codex" ? "codex" : "claude";
   const raw = parseStdinJson() || parseArgJson();
+  const transcriptPath = raw?.transcript_path || raw?.transcriptPath || raw?.payload?.transcript_path || raw?.payload?.transcriptPath;
+  const agent = agentFromTranscriptPath(transcriptPath) || requestedAgent;
   const rawEvent = flagValue("--event") || raw?.hook_event_name || raw?.event || raw?.type || raw?.payload?.type;
   const kind = agent === "codex" ? mapEvent(rawEvent || "waiting") : mapEvent(rawEvent);
   if (!kind) process.exit(0);
@@ -146,7 +578,7 @@ try {
     eventName: rawEvent,
     sessionId: flagValue("--session") || raw?.session_id || raw?.sessionId || raw?.payload?.session_id,
     cwd: raw?.cwd || raw?.workspace?.cwd || raw?.payload?.cwd || process.cwd(),
-    transcriptPath: raw?.transcript_path || raw?.transcriptPath || raw?.payload?.transcript_path || raw?.payload?.transcriptPath,
+    transcriptPath,
     message: raw?.message || raw?.payload?.message,
   };
   fs.mkdirSync(eventsDir, { recursive: true });
@@ -542,6 +974,476 @@ export function removeCodePulseCodexNotify(content: string): string {
   return kept.join("\n").trimEnd().concat("\n");
 }
 
+interface FileSignature {
+  dev: bigint;
+  ino: bigint;
+  size: bigint;
+  mtimeNs: bigint;
+  ctimeNs: bigint;
+}
+
+interface StableFileSnapshot {
+  content: Buffer;
+  signature: FileSignature;
+  mode: number;
+}
+
+interface BigIntStatLike extends FileSignature {
+  mode: bigint;
+}
+
+function fileSignature(stats: BigIntStatLike): FileSignature {
+  return {
+    dev: stats.dev,
+    ino: stats.ino,
+    size: stats.size,
+    mtimeNs: stats.mtimeNs,
+    ctimeNs: stats.ctimeNs,
+  };
+}
+
+function sameFileSignature(left: FileSignature, right: FileSignature): boolean {
+  return (
+    left.dev === right.dev &&
+    left.ino === right.ino &&
+    left.size === right.size &&
+    left.mtimeNs === right.mtimeNs &&
+    left.ctimeNs === right.ctimeNs
+  );
+}
+
+function sameFileSnapshot(
+  left: StableFileSnapshot,
+  right: StableFileSnapshot,
+): boolean {
+  return (
+    sameFileSignature(left.signature, right.signature) &&
+    left.content.equals(right.content)
+  );
+}
+
+function concurrentCodexHooksChangeError(): Error {
+  return new Error("Codex hooks.json 配置已变化，请刷新后重试");
+}
+
+async function readStableFileSnapshot(
+  filePath: string,
+  beforePathStat?: () => void | Promise<void>,
+): Promise<StableFileSnapshot> {
+  const handle = await open(filePath, "r");
+  try {
+    const before = await handle.stat({ bigint: true });
+    const content = await handle.readFile();
+    const after = await handle.stat({ bigint: true });
+    const beforeSignature = fileSignature(before);
+    const afterSignature = fileSignature(after);
+    await beforePathStat?.();
+    const currentPathSignature = fileSignature(
+      await stat(filePath, { bigint: true }),
+    );
+    const currentLinkStats = await lstat(filePath, { bigint: true });
+    if (currentLinkStats.isSymbolicLink()) {
+      throw await unsafeSymlinkError(filePath);
+    }
+    const currentLinkSignature = fileSignature(currentLinkStats);
+
+    if (
+      !sameFileSignature(beforeSignature, afterSignature) ||
+      !sameFileSignature(afterSignature, currentPathSignature) ||
+      !sameFileSignature(afterSignature, currentLinkSignature)
+    ) {
+      throw concurrentCodexHooksChangeError();
+    }
+
+    return {
+      content,
+      signature: afterSignature,
+      mode: Number(after.mode & 0o777n),
+    };
+  } finally {
+    await handle.close();
+  }
+}
+
+async function assertFileSnapshotUnchanged(
+  filePath: string,
+  expected: StableFileSnapshot,
+  beforePathStat?: () => void | Promise<void>,
+): Promise<void> {
+  let current: StableFileSnapshot;
+  try {
+    current = await readStableFileSnapshot(filePath, beforePathStat);
+  } catch (error) {
+    if (error instanceof UnsafeHooksSymlinkError) {
+      throw error;
+    }
+    throw concurrentCodexHooksChangeError();
+  }
+
+  if (
+    !sameFileSignature(current.signature, expected.signature) ||
+    !current.content.equals(expected.content)
+  ) {
+    throw concurrentCodexHooksChangeError();
+  }
+}
+
+interface ResolvedRepairRuntime {
+  now: () => number;
+  randomToken: (purpose: RepairRandomPurpose) => string;
+  isProcessAlive: (pid: number) => boolean;
+  onPhase: (phase: RepairCodexImportedHooksPhase) => Promise<void>;
+}
+
+function defaultIsProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return errorCode(error) !== "ESRCH";
+  }
+}
+
+function resolveRepairRuntime(
+  runtime: RepairCodexImportedHooksRuntime,
+): ResolvedRepairRuntime {
+  return {
+    now: runtime.now ?? Date.now,
+    randomToken: runtime.randomToken ?? (() => randomBytes(12).toString("hex")),
+    isProcessAlive: runtime.isProcessAlive ?? defaultIsProcessAlive,
+    onPhase: async (phase) => {
+      await runtime.onPhase?.(phase);
+    },
+  };
+}
+
+function compactTimestamp(timestamp: number): string {
+  const value = new Date(timestamp).toISOString();
+  return `${value.slice(0, 10).replaceAll("-", "")}-${value
+    .slice(11, 19)
+    .replaceAll(":", "")}-${value.slice(20, 23)}`;
+}
+
+interface RepairLockRecord {
+  pid: number;
+  createdAt: number;
+  token: string;
+}
+
+interface HeldRepairLock {
+  path: string;
+  token: string;
+  signature: FileSignature;
+  stalePaths: string[];
+}
+
+function parseRepairLockRecord(content: string): RepairLockRecord | undefined {
+  try {
+    const value = JSON.parse(content) as unknown;
+    if (
+      !isRecord(value) ||
+      !Number.isInteger(value.pid) ||
+      (value.pid as number) <= 0 ||
+      typeof value.createdAt !== "number" ||
+      !Number.isFinite(value.createdAt) ||
+      typeof value.token !== "string" ||
+      value.token.length === 0
+    ) {
+      return undefined;
+    }
+
+    return {
+      pid: value.pid as number,
+      createdAt: value.createdAt,
+      token: value.token,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function invalidLockIsFresh(
+  snapshot: StableFileSnapshot,
+  now: number,
+): boolean {
+  const latestMetadataNs =
+    snapshot.signature.mtimeNs > snapshot.signature.ctimeNs
+      ? snapshot.signature.mtimeNs
+      : snapshot.signature.ctimeNs;
+  const latestMetadataMs = Number(latestMetadataNs / 1_000_000n);
+  return now - latestMetadataMs <= INVALID_LOCK_STALE_MS;
+}
+
+async function tryCreateRepairLock(
+  lockPath: string,
+  record: RepairLockRecord,
+  runtime: ResolvedRepairRuntime,
+): Promise<FileSignature | undefined> {
+  let handle;
+  try {
+    handle = await open(lockPath, "wx", 0o600);
+  } catch (error) {
+    if (errorCode(error) === "EEXIST") {
+      return undefined;
+    }
+    throw error;
+  }
+
+  let recordWritten = false;
+  let initializedSignature: FileSignature | undefined;
+  try {
+    await runtime.onPhase("after-lock-open");
+    await handle.writeFile(JSON.stringify(record), "utf8");
+    await handle.sync();
+    recordWritten = true;
+    await runtime.onPhase("after-lock-write");
+
+    initializedSignature = fileSignature(await handle.stat({ bigint: true }));
+    const currentPathSignature = fileSignature(
+      await stat(lockPath, { bigint: true }),
+    );
+    const currentLinkStats = await lstat(lockPath, { bigint: true });
+    if (currentLinkStats.isSymbolicLink()) {
+      throw await unsafeSymlinkError(lockPath);
+    }
+    const currentLinkSignature = fileSignature(currentLinkStats);
+    if (
+      !sameFileSignature(initializedSignature, currentPathSignature) ||
+      !sameFileSignature(initializedSignature, currentLinkSignature)
+    ) {
+      throw new Error("Codex hooks.json 修复锁在初始化期间发生变化");
+    }
+
+    await handle.close();
+    return initializedSignature;
+  } catch (error) {
+    let handleSignature = initializedSignature;
+    if (!handleSignature) {
+      try {
+        handleSignature = fileSignature(await handle.stat({ bigint: true }));
+      } catch {
+        handleSignature = undefined;
+      }
+    }
+    await handle.close().catch(() => undefined);
+
+    if (handleSignature) {
+      try {
+        const current = await readStableFileSnapshot(lockPath);
+        const currentRecord = recordWritten
+          ? parseRepairLockRecord(current.content.toString("utf8"))
+          : undefined;
+        if (
+          sameFileSignature(current.signature, handleSignature) &&
+          (!recordWritten || currentRecord?.token === record.token)
+        ) {
+          // 初始化失败只清理仍指向本次 inode 的锁；最终 stat -> unlink 仍是
+          // best-effort，路径或 token 不一致时保留后来者。
+          await unlink(lockPath).catch(() => undefined);
+        }
+      } catch {
+        // 路径已消失、变成 symlink 或由后来者替换时均不删除。
+      }
+    }
+    throw error;
+  }
+}
+
+async function cleanupPaths(paths: string[]): Promise<void> {
+  await Promise.all(paths.map((item) => unlink(item).catch(() => undefined)));
+}
+
+async function acquireRepairLock(
+  hooksPath: string,
+  runtime: ResolvedRepairRuntime,
+): Promise<HeldRepairLock> {
+  const lockPath = `${hooksPath}.codepulse-import.lock`;
+  const token = runtime.randomToken("lock");
+  const stalePaths: string[] = [];
+
+  try {
+    for (let attempt = 0; attempt < EXCLUSIVE_CREATE_ATTEMPTS; attempt += 1) {
+      const record = { pid: process.pid, createdAt: runtime.now(), token };
+      const acquiredSignature = await tryCreateRepairLock(
+        lockPath,
+        record,
+        runtime,
+      );
+      if (acquiredSignature) {
+        return {
+          path: lockPath,
+          token,
+          signature: acquiredSignature,
+          stalePaths,
+        };
+      }
+
+      let observedLock: StableFileSnapshot;
+      try {
+        observedLock = await readStableFileSnapshot(lockPath);
+      } catch (error) {
+        if (errorCode(error) === "ENOENT") {
+          continue;
+        }
+        throw new Error(
+          `无法检查 Codex hooks.json 修复锁：${errorMessage(error)}`,
+        );
+      }
+
+      const existing = parseRepairLockRecord(
+        observedLock.content.toString("utf8"),
+      );
+      // 新锁协议不以 createdAt 租约接管活进程：结构有效且 PID 仍存活时始终 busy。
+      if (existing && runtime.isProcessAlive(existing.pid)) {
+        throw new Error("CodePulse 正在修复 Codex hooks.json，请稍后重试");
+      }
+
+      // open("wx") 与 token 写入之间允许持有者暂停。新鲜的空/损坏锁一律视为
+      // 正在初始化；仅元数据已超过保守期限的 invalid 锁才能进入 stale 接管。
+      if (!existing && invalidLockIsFresh(observedLock, runtime.now())) {
+        throw new Error("CodePulse 正在修复 Codex hooks.json，请稍后重试");
+      }
+      await runtime.onPhase("before-stale-takeover");
+
+      let currentLock: StableFileSnapshot;
+      try {
+        currentLock = await readStableFileSnapshot(lockPath);
+      } catch (error) {
+        if (errorCode(error) === "ENOENT") {
+          continue;
+        }
+        throw new Error(
+          `无法复核 Codex hooks.json 修复锁：${errorMessage(error)}`,
+        );
+      }
+      if (!sameFileSnapshot(currentLock, observedLock)) {
+        continue;
+      }
+
+      const stalePath = `${lockPath}.stale-${compactTimestamp(
+        runtime.now(),
+      )}-${runtime.randomToken("stale")}`;
+      try {
+        // stale 复核与 rename 仍不是条件原子操作，只能 best-effort 缩小竞态窗口。
+        await rename(lockPath, stalePath);
+        stalePaths.push(stalePath);
+      } catch (error) {
+        if (errorCode(error) === "ENOENT") {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    throw new Error("无法获取 Codex hooks.json 修复锁，请稍后重试");
+  } catch (error) {
+    await cleanupPaths(stalePaths);
+    throw error;
+  }
+}
+
+async function releaseRepairLock(
+  lock: HeldRepairLock,
+  runtime: ResolvedRepairRuntime,
+): Promise<void> {
+  try {
+    const snapshot = await readStableFileSnapshot(lock.path, () =>
+      runtime.onPhase("before-release-path-stat"),
+    );
+    const current = parseRepairLockRecord(snapshot.content.toString("utf8"));
+    if (
+      current?.token === lock.token &&
+      sameFileSignature(snapshot.signature, lock.signature)
+    ) {
+      // 这里已校验 token、获取时 signature、当前 path stat 与最终 lstat；最后的
+      // stat -> unlink 仍不是可移植 CAS，因此后来者发生变化时宁可保留锁。
+      await unlink(lock.path).catch(() => undefined);
+    }
+  } catch {
+    // 锁丢失、不可读或已被后来者接管时均不删除，后续 stale 检查可恢复。
+  } finally {
+    await cleanupPaths(lock.stalePaths);
+  }
+}
+
+async function createUniqueBackup(
+  hooksPath: string,
+  snapshot: StableFileSnapshot,
+  runtime: ResolvedRepairRuntime,
+): Promise<string> {
+  const timestamp = compactTimestamp(runtime.now());
+
+  for (let attempt = 0; attempt < EXCLUSIVE_CREATE_ATTEMPTS; attempt += 1) {
+    const backupPath = `${hooksPath}.codepulse-import-${timestamp}-${runtime.randomToken(
+      "backup",
+    )}.bak`;
+    let handle;
+    try {
+      handle = await open(backupPath, "wx", snapshot.mode);
+    } catch (error) {
+      if (errorCode(error) === "EEXIST") {
+        continue;
+      }
+      throw error;
+    }
+
+    try {
+      await handle.writeFile(snapshot.content);
+      await handle.sync();
+      await handle.chmod(snapshot.mode).catch(() => undefined);
+      await handle.close();
+
+      const written = await readFile(backupPath);
+      if (!written.equals(snapshot.content)) {
+        throw new Error("Codex hooks.json 备份校验失败");
+      }
+      return backupPath;
+    } catch (error) {
+      await handle.close().catch(() => undefined);
+      await unlink(backupPath).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  throw new Error("无法创建唯一的 Codex hooks.json 备份");
+}
+
+async function createExclusiveTempFile(
+  hooksPath: string,
+  content: Buffer,
+  mode: number,
+  runtime: ResolvedRepairRuntime,
+): Promise<string> {
+  for (let attempt = 0; attempt < EXCLUSIVE_CREATE_ATTEMPTS; attempt += 1) {
+    const tempPath = `${hooksPath}.codepulse-import-${process.pid}-${runtime.randomToken(
+      "temp",
+    )}.tmp`;
+    let handle;
+    try {
+      handle = await open(tempPath, "wx", mode);
+    } catch (error) {
+      if (errorCode(error) === "EEXIST") {
+        continue;
+      }
+      throw error;
+    }
+
+    try {
+      await handle.writeFile(content);
+      await handle.sync();
+      await handle.chmod(mode).catch(() => undefined);
+      await handle.close();
+      return tempPath;
+    } catch (error) {
+      await handle.close().catch(() => undefined);
+      await unlink(tempPath).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  throw new Error("无法创建唯一的 Codex hooks.json 临时文件");
+}
+
 export async function getHookInstallStatus(
   input: string | HookInstallOptions,
 ): Promise<HookInstallStatus> {
@@ -552,7 +1454,12 @@ export async function getHookInstallStatus(
     path.join(os.homedir(), ".claude", "settings.json");
   const codexConfigPath =
     options.codexConfigPath ?? path.join(os.homedir(), ".codex", "config.toml");
-  const scriptExists = await exists(scriptPath);
+  const codexHooksPath =
+    options.codexHooksPath ?? path.join(os.homedir(), ".codex", "hooks.json");
+  const [scriptExists, codexImportedHooks] = await Promise.all([
+    exists(scriptPath),
+    readCodexImportedHooksHealth(codexHooksPath),
+  ]);
   const claudeInstalled =
     scriptExists &&
     (await readFile(claudeSettingsPath, "utf8").catch(() => "")).includes(
@@ -570,7 +1477,115 @@ export async function getHookInstallStatus(
     hookPath: scriptPath,
     claudeSettingsPath,
     codexConfigPath,
+    codexImportedHooks,
   };
+}
+
+export async function repairCodexImportedClaudeHooks(
+  input: string | HookInstallOptions,
+  runtimeOverrides: RepairCodexImportedHooksRuntime = {},
+): Promise<RepairCodexImportedHooksResult> {
+  const options = normalizeHookOptions(input);
+  const hooksPath =
+    options.codexHooksPath ?? path.join(os.homedir(), ".codex", "hooks.json");
+  const initialStatus = await getHookInstallStatus(options);
+  if (initialStatus.codexImportedHooks.state !== "conflict") {
+    return {
+      status: initialStatus,
+      removedCount: 0,
+      eventNames: [],
+    };
+  }
+
+  try {
+    await assertRepairPathIsNotSymlink(hooksPath);
+  } catch (error) {
+    if (error instanceof UnsafeHooksSymlinkError) {
+      throw error;
+    }
+    if (errorCode(error) === "ENOENT") {
+      throw concurrentCodexHooksChangeError();
+    }
+    throw error;
+  }
+
+  const runtime = resolveRepairRuntime(runtimeOverrides);
+  const lock = await acquireRepairLock(hooksPath, runtime);
+  let tempPath: string | undefined;
+
+  try {
+    await runtime.onPhase("locked");
+
+    let snapshot: StableFileSnapshot;
+    try {
+      snapshot = await readStableFileSnapshot(hooksPath);
+    } catch {
+      const status = await getHookInstallStatus(options);
+      if (status.codexImportedHooks.state !== "conflict") {
+        return { status, removedCount: 0, eventNames: [] };
+      }
+      throw concurrentCodexHooksChangeError();
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = parseStrictJsonBuffer(snapshot.content);
+    } catch {
+      const status = await getHookInstallStatus(options);
+      return { status, removedCount: 0, eventNames: [] };
+    }
+
+    const removal = removeCodexImportedClaudeHookLeaves(parsed);
+    if (removal.removedCount === 0) {
+      const status = await getHookInstallStatus(options);
+      return { status, removedCount: 0, eventNames: [] };
+    }
+
+    const nextContent = Buffer.from(
+      `${JSON.stringify(removal.value, null, 2)}\n`,
+      "utf8",
+    );
+
+    await runtime.onPhase("before-backup");
+    await assertFileSnapshotUnchanged(hooksPath, snapshot);
+    const backupPath = await createUniqueBackup(hooksPath, snapshot, runtime);
+    await runtime.onPhase("backup-created");
+
+    tempPath = await createExclusiveTempFile(
+      hooksPath,
+      nextContent,
+      snapshot.mode,
+      runtime,
+    );
+    await runtime.onPhase("temp-created");
+    await runtime.onPhase("before-commit");
+    await assertFileSnapshotUnchanged(hooksPath, snapshot, () =>
+      runtime.onPhase("before-final-path-stat"),
+    );
+
+    // Codex App 不配合此锁，文件系统也没有可移植的跨进程 CAS。这里的内容/stat
+    // 双校验只能把竞态缩小到最终校验与同目录原子 rename 之间，不能宣称绝对消除。
+    await rename(tempPath, hooksPath);
+    tempPath = undefined;
+    await runtime.onPhase("committed");
+
+    return {
+      status: await getHookInstallStatus(options),
+      removedCount: removal.removedCount,
+      eventNames: removal.eventNames,
+      backupPath,
+    };
+  } finally {
+    if (tempPath) {
+      await unlink(tempPath).catch(() => undefined);
+    }
+    try {
+      await runtime.onPhase("before-release");
+    } finally {
+      // token 校验同样是 best-effort；校验与 unlink 之间不存在可移植 CAS。
+      await releaseRepairLock(lock, runtime);
+    }
+  }
 }
 
 export interface InstallHooksOptions {

@@ -193,6 +193,52 @@ describe("Codex subagent detection", () => {
   });
 });
 
+describe("Codex session origin", () => {
+  it("marks Claude Code initiated top-level sessions as delegated", async () => {
+    const tmpRoot = await mkdtemp(path.join(os.tmpdir(), "codepulse-origin-"));
+    const claudeProjectsRoot = path.join(tmpRoot, "claude-projects");
+    const codexSessionsRoot = path.join(tmpRoot, "codex-sessions");
+    const now = Date.parse("2026-07-11T00:20:00.000Z");
+    const cwd = "/Users/wyong/docker/codePulse";
+
+    await writeJsonlFixture(
+      path.join(codexSessionsRoot, "2026", "07", "11", "delegated.jsonl"),
+      [
+        {
+          type: "session_meta",
+          payload: {
+            cwd,
+            session_id: "delegated-session",
+            originator: "Claude Code",
+            source: "vscode",
+          },
+        },
+        {
+          type: "event_msg",
+          timestamp: "2026-07-11T00:19:00.000Z",
+          payload: { type: "user_message" },
+        },
+      ],
+      now - 1_000,
+    );
+
+    const sessions = await scanSessions({
+      activeWindowMs: 5 * 60 * 1000,
+      monitorPrefixes: [cwd],
+      now,
+      roots: {
+        claudeProjectsRoot,
+        codexSessionsRoot,
+      },
+    });
+
+    expect(sessions).toHaveLength(1);
+    expect((sessions[0] as SessionRecord & { origin?: string }).origin).toBe(
+      "delegated",
+    );
+  });
+});
+
 describe("Codex status inference", () => {
   it("treats task_complete events as done", () => {
     expect(

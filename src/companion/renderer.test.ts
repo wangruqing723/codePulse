@@ -59,6 +59,19 @@ function createModel(overrides: Partial<FloatingViewModel>): FloatingViewModel {
 }
 
 describe("companion renderer html", () => {
+  it("labels delegated Codex session cards", async () => {
+    const { renderFloatingHtml } = await loadRendererModule();
+    const model = createModel({});
+    model.sessions[0]!.session = {
+      ...model.sessions[0]!.session,
+      origin: "delegated",
+    } as (typeof model.sessions)[0]["session"];
+
+    const html = renderFloatingHtml?.(model);
+
+    expect(html).toContain("Codex（Claude Code 委托）");
+  });
+
   it("renders aggregate status, controls, sessions, and copy actions", async () => {
     const { renderFloatingHtml } = await loadRendererModule();
 

@@ -133,6 +133,206 @@ describe("hook event merging", () => {
     ]);
   });
 
+  it("merges Codex transcript hooks that were mislabeled as Claude", () => {
+    const transcriptPath =
+      "/Users/test/.codex/sessions/2026/07/10/rollout-shared.jsonl";
+    const passiveRunning = session({
+      id: "codex:shared",
+      agent: "codex",
+      status: "running",
+      updatedAt: "2026-07-01T00:00:10.000Z",
+      lastEventAt: "2026-07-01T00:00:10.000Z",
+      runningSince: "2026-07-01T00:00:00.000Z",
+      transcriptPath,
+    });
+    const sessions = mergeHookEvents(
+      [passiveRunning],
+      [
+        hook({
+          id: "mislabeled-prompt",
+          agent: "claude",
+          eventName: "UserPromptSubmit",
+          sessionId: "shared",
+          transcriptPath,
+          timestamp: "2026-07-01T00:00:20.000Z",
+        }),
+      ],
+      [],
+      Date.parse("2026-07-01T00:00:21.000Z"),
+    );
+
+    expect(sessions).toEqual([
+      {
+        ...passiveRunning,
+        source: "hook",
+        updatedAt: "2026-07-01T00:00:20.000Z",
+        lastEventAt: "2026-07-01T00:00:20.000Z",
+      },
+    ]);
+  });
+
+  it("merges mislabeled Claude Stop hooks into the Codex session", () => {
+    const transcriptPath =
+      "/Users/test/.codex/sessions/2026/07/10/rollout-shared.jsonl";
+    const passiveRunning = session({
+      id: "codex:shared",
+      agent: "codex",
+      status: "running",
+      updatedAt: "2026-07-01T00:00:10.000Z",
+      lastEventAt: "2026-07-01T00:00:10.000Z",
+      runningSince: "2026-07-01T00:00:00.000Z",
+      transcriptPath,
+    });
+    const sessions = mergeHookEvents(
+      [passiveRunning],
+      [
+        hook({
+          id: "mislabeled-stop",
+          agent: "claude",
+          kind: "done",
+          eventName: "Stop",
+          sessionId: "shared",
+          transcriptPath,
+          timestamp: "2026-07-01T00:00:20.000Z",
+        }),
+      ],
+      [],
+      Date.parse("2026-07-01T00:00:21.000Z"),
+    );
+
+    expect(sessions).toEqual([
+      {
+        ...passiveRunning,
+        status: "done",
+        source: "hook",
+        updatedAt: "2026-07-01T00:00:20.000Z",
+        lastEventAt: "2026-07-01T00:00:20.000Z",
+        completedAt: "2026-07-01T00:00:20.000Z",
+      },
+    ]);
+  });
+
+  it("recognizes WSL Codex transcript paths in hook-only events", () => {
+    const sessions = mergeHookEvents(
+      [],
+      [
+        hook({
+          id: "mislabeled-wsl-prompt",
+          agent: "claude",
+          eventName: "UserPromptSubmit",
+          sessionId: "wsl-session",
+          cwd: "/home/test/project",
+          transcriptPath:
+            "\\\\wsl$\\Ubuntu\\home\\test\\.codex\\sessions\\2026\\07\\10\\rollout-wsl-session.jsonl",
+        }),
+      ],
+      [],
+      Date.parse("2026-07-01T00:00:01.000Z"),
+    );
+
+    expect(sessions).toEqual([
+      expect.objectContaining({
+        id: "codex:wsl-session",
+        agent: "codex",
+        source: "hook",
+        status: "running",
+      }),
+    ]);
+  });
+
+  it("does not treat similar directory names as Codex transcript roots", () => {
+    const sessions = mergeHookEvents(
+      [],
+      [
+        hook({
+          id: "similar-path",
+          agent: "claude",
+          eventName: "UserPromptSubmit",
+          sessionId: "claude-session",
+          transcriptPath: "/tmp/.codex/sessions-copy/claude-session.jsonl",
+        }),
+      ],
+      [],
+      Date.parse("2026-07-01T00:00:01.000Z"),
+    );
+
+    expect(sessions).toEqual([
+      expect.objectContaining({
+        id: "claude:claude-session",
+        agent: "claude",
+      }),
+    ]);
+  });
+
+  it("updates the Codex session when both agents reuse the same session id", () => {
+    const claudeSession = session({
+      id: "claude:shared",
+      agent: "claude",
+      status: "done",
+      transcriptPath: "/Users/test/.claude/projects/project/shared.jsonl",
+    });
+    const codexSession = session({
+      id: "codex:shared",
+      agent: "codex",
+      status: "running",
+      runningSince: "2026-07-01T00:00:00.000Z",
+      transcriptPath:
+        "/Users/test/.codex/sessions/2026/07/10/rollout-shared.jsonl",
+    });
+    const sessions = mergeHookEvents(
+      [claudeSession, codexSession],
+      [
+        hook({
+          id: "mislabeled-codex-prompt",
+          agent: "claude",
+          eventName: "UserPromptSubmit",
+          sessionId: "shared",
+          transcriptPath: codexSession.transcriptPath,
+          timestamp: "2026-07-01T00:00:40.000Z",
+        }),
+      ],
+      [],
+      Date.parse("2026-07-01T00:00:41.000Z"),
+    );
+
+    expect(sessions).toEqual([
+      claudeSession,
+      {
+        ...codexSession,
+        source: "hook",
+        updatedAt: "2026-07-01T00:00:40.000Z",
+        lastEventAt: "2026-07-01T00:00:40.000Z",
+      },
+    ]);
+  });
+
+  it("recognizes Claude transcript paths in mislabeled hook events", () => {
+    const sessions = mergeHookEvents(
+      [],
+      [
+        hook({
+          id: "mislabeled-claude-prompt",
+          agent: "codex",
+          eventName: "UserPromptSubmit",
+          sessionId: "claude-session",
+          transcriptPath:
+            "/Users/test/.claude/projects/-Users-test-project/claude-session.jsonl",
+        }),
+      ],
+      [],
+      Date.parse("2026-07-01T00:00:01.000Z"),
+    );
+
+    expect(sessions).toEqual([
+      expect.objectContaining({
+        id: "claude:claude-session",
+        agent: "claude",
+        source: "hook",
+        status: "running",
+      }),
+    ]);
+  });
+
   it("does not create cwd-only Codex sessions for stale hooks", () => {
     const passiveRunning = session({
       id: "codex:session-id",

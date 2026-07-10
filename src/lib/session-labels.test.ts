@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import * as sessionLabels from "./session-labels";
 import { itemSubtitle } from "./session-labels";
 import type { SessionRecord } from "./types";
 
@@ -18,6 +19,33 @@ function session(patch: Partial<SessionRecord>): SessionRecord {
 }
 
 describe("session labels", () => {
+  it("separates delegated sessions and labels their origin", () => {
+    const helpers = sessionLabels as unknown as {
+      partitionSessionsByOrigin?: (sessions: SessionRecord[]) => {
+        userSessions: SessionRecord[];
+        delegatedSessions: SessionRecord[];
+      };
+      sessionAgentLabel?: (session: SessionRecord) => string;
+    };
+    const userSession = session({ id: "codex:user", agent: "codex" });
+    const delegatedSession = session({
+      id: "codex:delegated",
+      agent: "codex",
+      origin: "delegated",
+    } as Partial<SessionRecord>);
+
+    expect(
+      helpers.partitionSessionsByOrigin?.([userSession, delegatedSession]),
+    ).toEqual({
+      userSessions: [userSession],
+      delegatedSessions: [delegatedSession],
+    });
+    expect(helpers.sessionAgentLabel?.(userSession)).toBe("Codex");
+    expect(helpers.sessionAgentLabel?.(delegatedSession)).toBe(
+      "Codex（Claude Code 委托）",
+    );
+  });
+
   it("keeps total elapsed time moving while waiting for input", () => {
     expect(
       itemSubtitle(
