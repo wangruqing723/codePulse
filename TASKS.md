@@ -10,7 +10,7 @@
 [x] T8 使用 Node 22.22.2 运行 test、lint、Raycast build、Companion build 与 `git diff --check` | P0 | 30 分钟 | T1-T7
 [x] T9 进行代码评审，修复发现的问题并再次执行受影响验证 | P0 | 30 分钟 | T8
 [x] T9A 标记由 Claude Code 委托的真实 Codex 会话，并保持全局状态与摘要顺序一致 | P1 | 35 分钟 | T9
-[ ] T10 提交功能修复，升级版本到 0.1.9，修正旧版偏好文案并提交版本变更 | P0 | 20 分钟 | T9,T9A
+[x] T10 提交功能修复，升级版本到 0.1.9，修正旧版偏好文案并提交版本变更 | P0 | 20 分钟 | T9,T9A
 [ ] T11 推送 `dev`，同步并推送 `main`，确认本地与远程分支一致 | P0 | 20 分钟 | T10
 [ ] T12 本地打包 Companion 0.1.9，核验 manifest、ZIP SHA-256 与 App bundle 版本 | P0 | 30 分钟 | T11
 [ ] T13 创建并推送 `codepulse-companion-v0.1.9`，等待 workflow 成功并核验 Release 两项资产 | P0 | 40 分钟 | T12
