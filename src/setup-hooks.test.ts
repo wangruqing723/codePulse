@@ -108,6 +108,49 @@ describe("CodePulse Center companion bootstrap action", () => {
     await launch;
   });
 
+  it("reuses the in-progress launch when the action is triggered repeatedly", async () => {
+    let resolveBootstrap: (
+      result: Awaited<ReturnType<typeof bootstrapCompanion>>,
+    ) => void = () => undefined;
+    vi.mocked(bootstrapCompanion).mockReturnValue(
+      new Promise((resolve) => {
+        resolveBootstrap = resolve;
+      }),
+    );
+
+    const first = handleLaunchCompanion({});
+    const second = handleLaunchCompanion({});
+    await Promise.resolve();
+
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(bootstrapCompanion).toHaveBeenCalledTimes(1);
+
+    resolveBootstrap({
+      status: "launched",
+      path: "/raycast/support/companion/0.1.10/darwin-arm64/CodePulse Companion.app",
+    });
+    await Promise.all([first, second]);
+  });
+
+  it("reports cleanup warnings without hiding a successful launch", async () => {
+    vi.mocked(bootstrapCompanion).mockResolvedValue({
+      status: "launched",
+      path: "/raycast/support/companion/0.1.10/darwin-arm64/CodePulse Companion.app",
+      cleanup: {
+        removedPaths: [],
+        warnings: ["无法确认运行中的 Companion，已跳过旧版本目录清理"],
+      },
+    } as never);
+
+    await handleLaunchCompanion({});
+
+    expect(toast).toMatchObject({
+      style: "success",
+      title: "Floating Companion 已启动（旧文件未完全清理）",
+      message: expect.stringContaining("已安全保留 1 项未清理内容"),
+    });
+  });
+
   it.each([
     [
       { status: "release-unavailable", message: "manifest" },

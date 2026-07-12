@@ -39,6 +39,13 @@ interface ProcessSnapshot {
 const execFile = promisify(execFileCallback);
 const PROCESS_RECORD_FILE = "process.json";
 
+class CorruptCompanionProcessRecordError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CorruptCompanionProcessRecordError";
+  }
+}
+
 function createDefaultDeps(): ProcessControlDeps {
   return {
     platform: process.platform,
@@ -62,13 +69,75 @@ function processRecordPath(): string {
   return path.join(companionControlRoot(), PROCESS_RECORD_FILE);
 }
 
-async function readStoredRecord(): Promise<CompanionProcessRecord | undefined> {
-  try {
-    const raw = await deps.readFile(processRecordPath(), "utf8");
-    return JSON.parse(raw) as CompanionProcessRecord;
-  } catch {
-    return undefined;
+function isMissingFileError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    (error as NodeJS.ErrnoException).code === "ENOENT"
+  );
+}
+
+function isPositiveSafeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && Number(value) > 0;
+}
+
+function isNonNegativeSafeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && Number(value) >= 0;
+}
+
+function isSafeExecutablePath(platform: string, value: unknown): boolean {
+  if (typeof value !== "string") {
+    return false;
   }
+
+  const pathApi = platform === "win32" ? path.win32 : path.posix;
+  return pathApi.isAbsolute(value) && pathApi.basename(value).trim().length > 0;
+}
+
+function isCompanionProcessRecord(
+  value: unknown,
+): value is CompanionProcessRecord {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const record = value as Partial<CompanionProcessRecord>;
+  return (
+    isPositiveSafeInteger(record.pid) &&
+    (record.launcherPid === undefined ||
+      isNonNegativeSafeInteger(record.launcherPid)) &&
+    typeof record.startedAt === "string" &&
+    record.platform === deps.platform &&
+    (record.mode === "dev" || record.mode === "packaged") &&
+    isSafeExecutablePath(record.platform, record.execPath) &&
+    Array.isArray(record.argv) &&
+    record.argv.every((argument) => typeof argument === "string")
+  );
+}
+
+async function readStoredRecord(): Promise<CompanionProcessRecord | undefined> {
+  let raw: string;
+  try {
+    raw = await deps.readFile(processRecordPath(), "utf8");
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return undefined;
+    }
+    throw error;
+  }
+
+  let record: unknown;
+  try {
+    record = JSON.parse(raw);
+  } catch (error) {
+    throw new CorruptCompanionProcessRecordError(
+      `Companion 进程记录 JSON 无效：${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (!isCompanionProcessRecord(record)) {
+    throw new CorruptCompanionProcessRecordError("Companion 进程记录格式无效");
+  }
+  return record;
 }
 
 async function writeStoredRecord(
@@ -204,7 +273,7 @@ async function resolveMatchedProcesses(
 ): Promise<ProcessSnapshot[]> {
   if (deps.platform === "win32") {
     const candidates = [record.pid, record.launcherPid].filter(
-      (value): value is number => typeof value === "number",
+      isPositiveSafeInteger,
     );
     return candidates.map((pid) => ({ pid, ppid: 0, command: "" }));
   }
@@ -261,7 +330,16 @@ export async function killCompanionProcess(): Promise<{
   status: "killed" | "not-found";
   matchedPids: number[];
 }> {
-  const record = await readStoredRecord();
+  let record: CompanionProcessRecord | undefined;
+  try {
+    record = await readStoredRecord();
+  } catch (error) {
+    if (!(error instanceof CorruptCompanionProcessRecordError)) {
+      throw error;
+    }
+    await clearCompanionProcessRecord();
+    return { status: "not-found", matchedPids: [] };
+  }
   if (!record) {
     return { status: "not-found", matchedPids: [] };
   }

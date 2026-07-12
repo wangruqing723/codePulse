@@ -76,7 +76,9 @@ function targetInstalled(
   return target === "claude" ? status.claudeInstalled : status.codexInstalled;
 }
 
-export async function handleLaunchCompanion(
+let launchCompanionInFlight: Promise<void> | undefined;
+
+async function handleLaunchCompanionOnce(
   preferences: Pick<
     Preferences,
     "companionReleaseTag" | "companionManifestUrl"
@@ -99,8 +101,13 @@ export async function handleLaunchCompanion(
 
   if (result.status === "launched") {
     toast.style = Toast.Style.Success;
-    toast.title = "Floating Companion 已启动";
-    toast.message = result.path;
+    const warningCount = result.cleanup?.warnings.length ?? 0;
+    toast.title = warningCount
+      ? "Floating Companion 已启动（旧文件未完全清理）"
+      : "Floating Companion 已启动";
+    toast.message = warningCount
+      ? `${result.path}\n已安全保留 ${warningCount} 项未清理内容。`
+      : result.path;
     return;
   }
 
@@ -128,6 +135,25 @@ export async function handleLaunchCompanion(
   toast.style = Toast.Style.Failure;
   toast.title = "Floating Companion 安装失败";
   toast.message = result.message;
+}
+
+export function handleLaunchCompanion(
+  preferences: Pick<
+    Preferences,
+    "companionReleaseTag" | "companionManifestUrl"
+  > = {},
+): Promise<void> {
+  if (launchCompanionInFlight) {
+    return launchCompanionInFlight;
+  }
+
+  const launch = handleLaunchCompanionOnce(preferences).finally(() => {
+    if (launchCompanionInFlight === launch) {
+      launchCompanionInFlight = undefined;
+    }
+  });
+  launchCompanionInFlight = launch;
+  return launch;
 }
 
 export async function handleRepairCodexImportedHooks(

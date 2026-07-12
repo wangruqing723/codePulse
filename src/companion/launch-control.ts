@@ -2,17 +2,37 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
 import { createWriteStream } from "node:fs";
-import { access, mkdir, rename, rm, writeFile } from "node:fs/promises";
+import {
+  access,
+  lstat,
+  mkdir,
+  readdir,
+  realpath,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { promisify } from "node:util";
 import { environment, open } from "@raycast/api";
 import packageJson from "../../package.json";
+import {
+  readCompanionProcessRecord,
+  type CompanionProcessRecord,
+} from "./process-control";
+import {
+  cleanupCompanionInstall,
+  isStrictCompanionVersion,
+  type CompanionCleanupDeps,
+  type CompanionCleanupResult,
+} from "./install-cleanup";
 
 const REPO_RELEASE_BASE =
   "https://github.com/wangruqing723/codePulse/releases/download";
 const execFileAsync = promisify(execFile);
+const SHA256_PATTERN = /^[a-f0-9]{64}$/i;
 
 interface CompanionReleaseArtifact {
   url: string;
@@ -26,7 +46,7 @@ export interface CompanionReleaseManifest {
 }
 
 export type CompanionBootstrapResult =
-  | { status: "launched"; path: string }
+  | { status: "launched"; path: string; cleanup?: CompanionCleanupResult }
   | { status: "release-unavailable"; message?: string }
   | { status: "unsupported-platform"; platformKey: string }
   | { status: "hash-mismatch"; expected: string; actual: string }
@@ -75,7 +95,7 @@ export type CompanionBootstrapProgress =
   | { stage: "extracting" }
   | { stage: "launching" };
 
-interface BootstrapDeps {
+interface BootstrapDeps extends CompanionCleanupDeps {
   platform: NodeJS.Platform;
   arch: string;
   packageVersion: string;
@@ -99,6 +119,7 @@ interface BootstrapDeps {
     platform: NodeJS.Platform,
   ): Promise<void>;
   open(target: string): Promise<void>;
+  readCompanionProcessRecord(): Promise<CompanionProcessRecord | undefined>;
 }
 
 async function extractZip(
@@ -205,10 +226,16 @@ function createDefaultDeps(): BootstrapDeps {
     rename,
     extractZip,
     open,
+    readdir: async (targetPath, options) => readdir(targetPath, options),
+    lstat,
+    realpath,
+    readCompanionProcessRecord,
   };
 }
 
 let deps = createDefaultDeps();
+const bootstrapRequests = new Map<string, Promise<CompanionBootstrapResult>>();
+const bootstrapTargets = new Map<string, Promise<CompanionBootstrapResult>>();
 
 export function getPlatformKey(
   platform: NodeJS.Platform,
@@ -233,6 +260,60 @@ function entrypointForPlatform(platformKey: string): string | undefined {
   if (platformKey === "darwin-arm64") return "CodePulse Companion.app";
   if (platformKey === "win32-x64") return "CodePulse Companion.exe";
   return undefined;
+}
+
+function bootstrapTargetKey(options: BootstrapCompanionOptions): string {
+  return JSON.stringify([
+    options.supportPath,
+    deps.platform,
+    deps.arch,
+    deps.packageVersion,
+  ]);
+}
+
+function bootstrapRequestKey(options: BootstrapCompanionOptions): string {
+  return JSON.stringify([
+    bootstrapTargetKey(options),
+    options.releaseTag?.trim() ?? "",
+    options.manifestUrl?.trim() ?? "",
+  ]);
+}
+
+function validateManifestArtifact(
+  manifest: CompanionReleaseManifest,
+  platformKey: string,
+): { artifact: CompanionReleaseArtifact; entrypoint: string } | string {
+  if (
+    !isStrictCompanionVersion(manifest.version) ||
+    manifest.version !== deps.packageVersion
+  ) {
+    return `Companion manifest 版本不匹配：期望 ${deps.packageVersion}，实际 ${manifest.version}`;
+  }
+
+  const entrypoint = entrypointForPlatform(platformKey);
+  const artifact = manifest.artifacts?.[platformKey];
+  if (!entrypoint || !artifact) {
+    return `Companion manifest 不支持当前平台：${platformKey}`;
+  }
+  if (artifact.entrypoint !== entrypoint) {
+    return `Companion manifest 入口不匹配：${artifact.entrypoint}`;
+  }
+  if (!SHA256_PATTERN.test(artifact.sha256)) {
+    return "Companion manifest SHA-256 格式无效";
+  }
+
+  try {
+    if (new URL(artifact.url).protocol !== "https:") {
+      return `Companion artifact URL 必须使用 HTTPS：${artifact.url}`;
+    }
+  } catch {
+    return `Companion artifact URL 无效：${artifact.url}`;
+  }
+
+  return {
+    artifact: { ...artifact, sha256: artifact.sha256.toLowerCase() },
+    entrypoint,
+  };
 }
 
 function installedEntrypointPath(
@@ -282,8 +363,47 @@ function emitProgress(
   }
 }
 
-export async function bootstrapCompanion(
+async function launchAndCleanup(
   options: BootstrapCompanionOptions,
+  platformKey: string,
+  entrypointPath: string,
+): Promise<CompanionBootstrapResult> {
+  let runningRecord: CompanionProcessRecord | undefined;
+  let processInspectionError: string | undefined;
+  try {
+    runningRecord = await deps.readCompanionProcessRecord();
+  } catch (error) {
+    processInspectionError =
+      error instanceof Error ? error.message : String(error);
+  }
+
+  await deps.open(entrypointPath);
+  let cleanup: CompanionCleanupResult;
+  try {
+    cleanup = await cleanupCompanionInstall(
+      {
+        supportPath: options.supportPath,
+        currentVersion: deps.packageVersion,
+        platformKey,
+        runningRecord,
+        processInspectionError,
+      },
+      deps,
+    );
+  } catch (error) {
+    cleanup = {
+      removedPaths: [],
+      warnings: [
+        `旧版本清理未完成，已保留原文件：${error instanceof Error ? error.message : String(error)}`,
+      ],
+    };
+  }
+  return { status: "launched", path: entrypointPath, cleanup };
+}
+
+async function bootstrapCompanionOnce(
+  options: BootstrapCompanionOptions,
+  skipInstalledCheck = false,
 ): Promise<CompanionBootstrapResult> {
   const platformKey = getPlatformKey(deps.platform, deps.arch);
   emitProgress(options.onProgress, { stage: "checking-installed" });
@@ -293,11 +413,10 @@ export async function bootstrapCompanion(
     platformKey,
   );
 
-  if (installed) {
+  if (!skipInstalledCheck && installed) {
     try {
       await deps.access(installed);
-      await deps.open(installed);
-      return { status: "launched", path: installed };
+      return await launchAndCleanup(options, platformKey, installed);
     } catch {
       // Fall through to public release manifest download.
     }
@@ -312,26 +431,33 @@ export async function bootstrapCompanion(
   const manifest = await fetchJson(manifestUrl);
   if (!manifest) return { status: "release-unavailable", message: manifestUrl };
 
-  const artifact = manifest.artifacts[platformKey];
-  if (!artifact) return { status: "unsupported-platform", platformKey };
+  if (
+    !entrypointForPlatform(platformKey) ||
+    !manifest.artifacts?.[platformKey]
+  ) {
+    return { status: "unsupported-platform", platformKey };
+  }
+  const validated = validateManifestArtifact(manifest, platformKey);
+  if (typeof validated === "string") {
+    return { status: "install-failed", message: validated };
+  }
+  const { artifact, entrypoint } = validated;
 
   const downloadsDir = joinForPlatform(platformKey, options.supportPath, [
     "companion",
     "downloads",
   ]);
   const zipPath = joinForPlatform(platformKey, downloadsDir, [
-    `${manifest.version}-${platformKey}.zip`,
+    `${deps.packageVersion}-${platformKey}.zip`,
   ]);
   const partialZipPath = `${zipPath}.part`;
   const installDir = joinForPlatform(platformKey, options.supportPath, [
     "companion",
-    manifest.version,
+    deps.packageVersion,
     platformKey,
   ]);
   const tempDir = `${installDir}.tmp-${Date.now()}`;
-  const entrypointPath = joinForPlatform(platformKey, installDir, [
-    artifact.entrypoint,
-  ]);
+  const entrypointPath = joinForPlatform(platformKey, installDir, [entrypoint]);
 
   try {
     await deps.mkdir(downloadsDir, { recursive: true });
@@ -370,8 +496,7 @@ export async function bootstrapCompanion(
     await deps.rm(installDir, { recursive: true, force: true });
     await deps.rename(tempDir, installDir);
     emitProgress(options.onProgress, { stage: "launching" });
-    await deps.open(entrypointPath);
-    return { status: "launched", path: entrypointPath };
+    return await launchAndCleanup(options, platformKey, entrypointPath);
   } catch (error) {
     try {
       await deps.rm(partialZipPath, { force: true });
@@ -384,6 +509,35 @@ export async function bootstrapCompanion(
       message: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+export function bootstrapCompanion(
+  options: BootstrapCompanionOptions,
+): Promise<CompanionBootstrapResult> {
+  const requestKey = bootstrapRequestKey(options);
+  const current = bootstrapRequests.get(requestKey);
+  if (current) {
+    return current;
+  }
+
+  const targetKey = bootstrapTargetKey(options);
+  const predecessor = bootstrapTargets.get(targetKey);
+  const bootstrap = (async () => {
+    if (predecessor) {
+      await predecessor;
+    }
+    return bootstrapCompanionOnce(options, predecessor !== undefined);
+  })().finally(() => {
+    if (bootstrapRequests.get(requestKey) === bootstrap) {
+      bootstrapRequests.delete(requestKey);
+    }
+    if (bootstrapTargets.get(targetKey) === bootstrap) {
+      bootstrapTargets.delete(targetKey);
+    }
+  });
+  bootstrapRequests.set(requestKey, bootstrap);
+  bootstrapTargets.set(targetKey, bootstrap);
+  return bootstrap;
 }
 
 export async function launchCompanionApp(): Promise<CompanionLaunchResult> {
@@ -403,5 +557,7 @@ export const __testing__ = {
   },
   resetDeps() {
     deps = createDefaultDeps();
+    bootstrapRequests.clear();
+    bootstrapTargets.clear();
   },
 };
