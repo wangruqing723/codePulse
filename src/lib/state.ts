@@ -161,6 +161,23 @@ function eventName(event: HookEvent): string {
   return (event.eventName ?? "").toLowerCase();
 }
 
+function transcriptIdentity(transcriptPath: string): string {
+  return transcriptPath.replaceAll("\\", "/");
+}
+
+function codexTranscriptIdentity(transcriptPath: string): string {
+  const normalized = transcriptIdentity(transcriptPath);
+  const segments = normalized.split("/");
+  const sessionsIndex = segments.findIndex(
+    (segment, index) =>
+      segment === ".codex" && segments[index + 1] === "sessions",
+  );
+
+  return sessionsIndex >= 0
+    ? segments.slice(sessionsIndex).join("/")
+    : normalized;
+}
+
 function agentFromTranscriptPath(
   transcriptPath: string | undefined,
 ): AgentKind | undefined {
@@ -168,7 +185,7 @@ function agentFromTranscriptPath(
     return undefined;
   }
 
-  const segments = transcriptPath.replaceAll("\\", "/").split("/");
+  const segments = transcriptIdentity(transcriptPath).split("/");
   for (let index = 0; index < segments.length - 1; index += 1) {
     if (segments[index] === ".codex" && segments[index + 1] === "sessions") {
       return "codex";
@@ -250,7 +267,19 @@ function sessionIdForHookEvent(
   sessions: Map<string, SessionRecord>,
 ): string | undefined {
   if (event.sessionId) {
-    return `${event.agent}:${event.sessionId}`;
+    const id = `${event.agent}:${event.sessionId}`;
+    const matchedById = sessions.get(id);
+    if (
+      event.agent === "codex" &&
+      event.transcriptPath &&
+      matchedById?.transcriptPath &&
+      codexTranscriptIdentity(event.transcriptPath) !==
+        codexTranscriptIdentity(matchedById.transcriptPath)
+    ) {
+      return undefined;
+    }
+
+    return id;
   }
 
   const matchedByTranscript = event.transcriptPath

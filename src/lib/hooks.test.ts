@@ -776,6 +776,72 @@ describe("Codex imported Claude hook repair", () => {
     }
   });
 
+  it.each(["9007199254740993", "1.0000000000000001", "1e400"])(
+    "refuses to repair hooks.json containing the unsafe JSON number %s",
+    async (rawNumber) => {
+      const fixture = await createImportedHooksFixture();
+      const original = Buffer.from(
+        `{"unknownNumber":${rawNumber},"hooks":${JSON.stringify(importedHooksConfig().hooks)}}\n`,
+      );
+
+      try {
+        await writeFile(fixture.codexHooksPath, original);
+
+        await expect(
+          repairCodexImportedClaudeHooks({
+            supportPath: fixture.supportPath,
+            codexHooksPath: fixture.codexHooksPath,
+          }),
+        ).rejects.toThrow(/拒绝自动修复.*手动删除.*改为字符串/);
+
+        expect(await readFile(fixture.codexHooksPath)).toEqual(original);
+        expect(await readdir(fixture.root)).toEqual(["hooks.json"]);
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("returns clean when another writer removes the conflict after locking", async () => {
+    const fixture = await createImportedHooksFixture();
+    const concurrent = Buffer.from(
+      '{"unknownNumber":9007199254740993,"hooks":{}}\n',
+    );
+
+    try {
+      await writeFile(
+        fixture.codexHooksPath,
+        JSON.stringify(importedHooksConfig()),
+        "utf8",
+      );
+
+      const result = await repairCodexImportedClaudeHooks(
+        {
+          supportPath: fixture.supportPath,
+          codexHooksPath: fixture.codexHooksPath,
+        },
+        {
+          onPhase: async (phase: string) => {
+            if (phase === "locked") {
+              await writeFile(fixture.codexHooksPath, concurrent);
+            }
+          },
+        },
+      );
+
+      expect(result).toMatchObject({
+        removedCount: 0,
+        eventNames: [],
+        status: { codexImportedHooks: { state: "clean" } },
+      });
+      expect(result.backupPath).toBeUndefined();
+      expect(await readFile(fixture.codexHooksPath)).toEqual(concurrent);
+      expect(await readdir(fixture.root)).toEqual(["hooks.json"]);
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
   it("does not repair or back up JSON containing invalid UTF-8", async () => {
     const fixture = await createImportedHooksFixture();
     const original = invalidUtf8ImportedHooksConfig();

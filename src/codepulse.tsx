@@ -56,8 +56,8 @@ const EMPTY_COUNTS: Record<SessionStatus, number> = {
 };
 
 const SECTION_ORDER: SessionStatus[] = [
-  "waiting",
   "error",
+  "waiting",
   "running",
   "done",
   "idle",
@@ -90,10 +90,11 @@ const SETUP_TARGETS: Array<{
 
 function dominantStatus(snapshot: StateSnapshot | undefined): SessionStatus {
   const counts = snapshot?.counts ?? EMPTY_COUNTS;
-  if (counts.waiting > 0) return "waiting";
-  if (counts.error > 0) return "error";
-  if (counts.running > 0) return "running";
-  if (counts.done > 0) return "done";
+  for (const status of SECTION_ORDER) {
+    if (counts[status] > 0) {
+      return status;
+    }
+  }
   return "idle";
 }
 
@@ -116,31 +117,6 @@ function menuBarTitle(
 
   const count = counts[status];
   return count > 0 ? `${icon}${count}` : icon;
-}
-
-function countsForSessions(
-  sessions: SessionRecord[],
-): Record<SessionStatus, number> {
-  return {
-    running: sessions.filter((session) => session.status === "running").length,
-    waiting: sessions.filter((session) => session.status === "waiting").length,
-    done: sessions.filter((session) => session.status === "done").length,
-    idle: sessions.filter((session) => session.status === "idle").length,
-    error: sessions.filter((session) => session.status === "error").length,
-  };
-}
-
-function snapshotForSessions(
-  snapshot: StateSnapshot | undefined,
-  sessions: SessionRecord[],
-): StateSnapshot | undefined {
-  return snapshot
-    ? {
-        ...snapshot,
-        sessions,
-        counts: countsForSessions(sessions),
-      }
-    : undefined;
 }
 
 function sectionForStatus(
@@ -417,7 +393,6 @@ export default function Command() {
       partitionSessionsByOrigin(sessions);
 
     return {
-      userSnapshot: snapshotForSessions(snapshot, userSessions),
       sections: SECTION_ORDER.flatMap((status) =>
         [
           sectionForStatus(userSessions, "user", status),
@@ -432,7 +407,7 @@ export default function Command() {
 
   return (
     <MenuBarExtra
-      title={menuBarTitle(presentation.userSnapshot, preferences.menuBarStyle)}
+      title={menuBarTitle(snapshot, preferences.menuBarStyle)}
       isLoading={isLoading}
     >
       {presentation.sections.length === 0 ? (

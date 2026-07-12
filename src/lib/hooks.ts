@@ -29,6 +29,7 @@ const TOML_NOTIFY_PATTERN = /^\s*notify\s*=/;
 const INVALID_LOCK_STALE_MS = 5 * 60 * 1_000;
 const EXCLUSIVE_CREATE_ATTEMPTS = 100;
 const STRICT_UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
+const JSON_NUMBER_PATTERN = /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
 
 export type CodexImportedHooksState = "clean" | "conflict" | "invalid";
 
@@ -146,8 +147,112 @@ function invalidCodexImportedHooksHealth(
   };
 }
 
+interface StrictJsonDocument {
+  source: string;
+  value: unknown;
+}
+
+function parseStrictJsonDocument(content: Buffer): StrictJsonDocument {
+  const source = STRICT_UTF8_DECODER.decode(content);
+  return { source, value: JSON.parse(source) as unknown };
+}
+
 function parseStrictJsonBuffer(content: Buffer): unknown {
-  return JSON.parse(STRICT_UTF8_DECODER.decode(content)) as unknown;
+  return parseStrictJsonDocument(content).value;
+}
+
+interface CanonicalDecimal {
+  coefficient: string;
+  exponent: bigint;
+  negative: boolean;
+}
+
+function canonicalDecimal(rawNumber: string): CanonicalDecimal {
+  const match = /^(-?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(rawNumber);
+  if (!match) {
+    throw new Error(`Invalid JSON number: ${rawNumber}`);
+  }
+
+  const fraction = match[3] ?? "";
+  let coefficient = `${match[2]}${fraction}`.replace(/^0+/, "");
+  if (!coefficient) {
+    return { coefficient: "0", exponent: 0n, negative: false };
+  }
+
+  let exponent = BigInt(match[4] ?? "0") - BigInt(fraction.length);
+  const trailingZeros = coefficient.match(/0+$/)?.[0].length ?? 0;
+  if (trailingZeros > 0) {
+    coefficient = coefficient.slice(0, -trailingZeros);
+    exponent += BigInt(trailingZeros);
+  }
+
+  return {
+    coefficient,
+    exponent,
+    negative: match[1] === "-",
+  };
+}
+
+function jsonNumberChangesValue(rawNumber: string, value: number): boolean {
+  const original = canonicalDecimal(rawNumber);
+  const serialized = canonicalDecimal(String(value));
+  return (
+    original.coefficient !== serialized.coefficient ||
+    original.exponent !== serialized.exponent ||
+    original.negative !== serialized.negative
+  );
+}
+
+function containsUnsafeJsonNumber(source: string): boolean {
+  let index = 0;
+
+  while (index < source.length) {
+    if (source[index] === '"') {
+      index += 1;
+      while (index < source.length) {
+        if (source[index] === "\\") {
+          index += 2;
+        } else if (source[index] === '"') {
+          index += 1;
+          break;
+        } else {
+          index += 1;
+        }
+      }
+      continue;
+    }
+
+    if (source[index] === "-" || /\d/.test(source[index] ?? "")) {
+      JSON_NUMBER_PATTERN.lastIndex = index;
+      const match = JSON_NUMBER_PATTERN.exec(source);
+      if (!match) {
+        index += 1;
+        continue;
+      }
+
+      const rawNumber = match[0];
+      const current = Number(rawNumber);
+      if (
+        !Number.isFinite(current) ||
+        (Number.isInteger(current) && !Number.isSafeInteger(current)) ||
+        jsonNumberChangesValue(rawNumber, current)
+      ) {
+        return true;
+      }
+      index = JSON_NUMBER_PATTERN.lastIndex;
+      continue;
+    }
+
+    index += 1;
+  }
+
+  return false;
+}
+
+function unsafeHooksJsonNumberError(filePath: string): Error {
+  return new Error(
+    `Codex hooks.json 包含 JavaScript 无法无损表示的数值，CodePulse 拒绝自动修复以避免改写未知字段。请手动删除导入的 Claude hooks，或将该数值改为字符串后重试：${filePath}`,
+  );
 }
 
 class UnsafeHooksSymlinkError extends Error {
@@ -1527,18 +1632,22 @@ export async function repairCodexImportedClaudeHooks(
       throw concurrentCodexHooksChangeError();
     }
 
-    let parsed: unknown;
+    let document: StrictJsonDocument;
     try {
-      parsed = parseStrictJsonBuffer(snapshot.content);
+      document = parseStrictJsonDocument(snapshot.content);
     } catch {
       const status = await getHookInstallStatus(options);
       return { status, removedCount: 0, eventNames: [] };
     }
 
-    const removal = removeCodexImportedClaudeHookLeaves(parsed);
+    const removal = removeCodexImportedClaudeHookLeaves(document.value);
     if (removal.removedCount === 0) {
       const status = await getHookInstallStatus(options);
       return { status, removedCount: 0, eventNames: [] };
+    }
+
+    if (containsUnsafeJsonNumber(document.source)) {
+      throw unsafeHooksJsonNumberError(hooksPath);
     }
 
     const nextContent = Buffer.from(

@@ -212,6 +212,80 @@ describe("hook event merging", () => {
     ]);
   });
 
+  it("does not let a normalized Codex subagent Stop overwrite its parent session", () => {
+    const parentSession = session({
+      id: "codex:parent",
+      agent: "codex",
+      status: "running",
+      updatedAt: "2026-07-01T00:00:10.000Z",
+      lastEventAt: "2026-07-01T00:00:10.000Z",
+      runningSince: "2026-07-01T00:00:00.000Z",
+      transcriptPath:
+        "/Users/test/.codex/sessions/2026/07/10/rollout-parent.jsonl",
+    });
+    const sessions = mergeHookEvents(
+      [parentSession],
+      [
+        hook({
+          id: "subagent-stop",
+          agent: "claude",
+          kind: "done",
+          eventName: "Stop",
+          sessionId: "parent",
+          transcriptPath:
+            "/Users/test/.codex/sessions/2026/07/10/rollout-subagent.jsonl",
+          timestamp: "2026-07-01T00:00:20.000Z",
+        }),
+      ],
+      [],
+      Date.parse("2026-07-01T00:00:21.000Z"),
+    );
+
+    expect(sessions).toEqual([parentSession]);
+  });
+
+  it("merges WSL Linux and UNC transcript paths for the same session id", () => {
+    const hookTranscriptPath = "/home/test/.codex/sessions/rollout.jsonl";
+    const passiveRunning = session({
+      id: "codex:wsl-session",
+      agent: "codex",
+      status: "running",
+      updatedAt: "2026-07-01T00:00:10.000Z",
+      lastEventAt: "2026-07-01T00:00:10.000Z",
+      runningSince: "2026-07-01T00:00:00.000Z",
+      transcriptPath:
+        "\\\\wsl$\\Ubuntu\\home\\test\\.codex\\sessions\\rollout.jsonl",
+    });
+    const sessions = mergeHookEvents(
+      [passiveRunning],
+      [
+        hook({
+          id: "wsl-stop",
+          agent: "claude",
+          kind: "done",
+          eventName: "Stop",
+          sessionId: "wsl-session",
+          transcriptPath: hookTranscriptPath,
+          timestamp: "2026-07-01T00:00:20.000Z",
+        }),
+      ],
+      [],
+      Date.parse("2026-07-01T00:00:21.000Z"),
+    );
+
+    expect(sessions).toEqual([
+      {
+        ...passiveRunning,
+        status: "done",
+        source: "hook",
+        transcriptPath: hookTranscriptPath,
+        updatedAt: "2026-07-01T00:00:20.000Z",
+        lastEventAt: "2026-07-01T00:00:20.000Z",
+        completedAt: "2026-07-01T00:00:20.000Z",
+      },
+    ]);
+  });
+
   it("recognizes WSL Codex transcript paths in hook-only events", () => {
     const sessions = mergeHookEvents(
       [],

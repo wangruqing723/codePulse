@@ -298,10 +298,40 @@ export function renderFloatingHtml(model: FloatingViewModel): string {
   `;
 }
 
-function measureContentHeight(root: HTMLElement): number {
-  // .shell 是内容根，用 scrollHeight 拿到不受窗口裁剪的真实内容高度。
+function cssPixels(value: string): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+}
+
+function naturalChildSpan(element: HTMLElement | null): number {
+  const first = element?.firstElementChild as HTMLElement | null;
+  const last = element?.lastElementChild as HTMLElement | null;
+  if (!first || !last) {
+    return 0;
+  }
+
+  const firstRect = first.getBoundingClientRect();
+  const lastRect = last.getBoundingClientRect();
+  return Math.max(0, lastRect.bottom - firstRect.top);
+}
+
+export function measureContentHeight(root: HTMLElement): number {
   const shell = root.querySelector<HTMLElement>(".shell");
-  return shell?.scrollHeight ?? root.scrollHeight;
+  if (!shell) {
+    return root.scrollHeight;
+  }
+
+  const header = root.querySelector<HTMLElement>(".header");
+  const content =
+    root.querySelector<HTMLElement>(".session-list") ??
+    root.querySelector<HTMLElement>(".empty-state");
+  const style = getComputedStyle(shell);
+  const padding = cssPixels(style.paddingTop) + cssPixels(style.paddingBottom);
+  const headerHeight = header?.getBoundingClientRect().height ?? 0;
+  const rowGap = header && content ? cssPixels(style.rowGap || style.gap) : 0;
+
+  // 使用子元素的实际跨度，既包含卡片间距，又不受当前滚动容器高度影响。
+  return padding + headerHeight + rowGap + naturalChildSpan(content);
 }
 
 function reportContentHeight(

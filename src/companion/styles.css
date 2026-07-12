@@ -92,9 +92,11 @@ select {
 .status-summary {
   display: flex;
   align-items: center;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 12px;
   min-width: 0;
+  overflow: visible;
+  white-space: normal;
 }
 
 .status-summary-item {

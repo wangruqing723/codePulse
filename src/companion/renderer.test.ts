@@ -16,6 +16,105 @@ function readStyles(): string {
   return readFileSync("src/companion/styles.css", "utf8");
 }
 
+function resolvedClassDeclarations(
+  css: string,
+  classNames: string[],
+): Record<string, string> {
+  const declarations: Record<string, string> = {};
+  const rulePattern = /([^{}]+)\{([^{}]*)}/g;
+
+  for (const match of css.matchAll(rulePattern)) {
+    const selectors = match[1]?.split(",") ?? [];
+    const body = match[2] ?? "";
+    const applies = selectors.some((selector) => {
+      const normalized = selector.trim();
+      if (!/^(\.[a-z0-9-]+)+$/i.test(normalized)) {
+        return false;
+      }
+
+      const requiredClasses = Array.from(
+        normalized.matchAll(/\.([a-z0-9-]+)/gi),
+        (classMatch) => classMatch[1],
+      );
+      return requiredClasses.every((className) =>
+        classNames.includes(className),
+      );
+    });
+
+    if (!applies) {
+      continue;
+    }
+
+    for (const declaration of body.split(";")) {
+      const separator = declaration.indexOf(":");
+      if (separator < 0) {
+        continue;
+      }
+
+      const property = declaration.slice(0, separator).trim();
+      const value = declaration.slice(separator + 1).trim();
+      if (property && value) {
+        declarations[property] = value;
+      }
+    }
+  }
+
+  return declarations;
+}
+
+interface ContentHeightFixtureOptions {
+  shellHeight: number;
+  headerHeight: number;
+  content: "sessions" | "empty";
+  childRects: Array<{ top: number; bottom: number }>;
+  listScrollHeight?: number;
+  listClientHeight?: number;
+}
+
+function createContentHeightFixture(options: ContentHeightFixtureOptions): {
+  root: HTMLElement;
+} {
+  const children = options.childRects.map(({ top, bottom }) => ({
+    getBoundingClientRect: () => ({
+      top,
+      bottom,
+      height: bottom - top,
+    }),
+  }));
+  const content = {
+    scrollHeight: options.listScrollHeight ?? 0,
+    clientHeight: options.listClientHeight ?? 0,
+    firstElementChild: children[0] ?? null,
+    lastElementChild: children.at(-1) ?? null,
+  };
+  const shell = {
+    scrollHeight: options.shellHeight,
+  };
+  const header = {
+    getBoundingClientRect: () => ({
+      top: 12,
+      bottom: 12 + options.headerHeight,
+      height: options.headerHeight,
+    }),
+  };
+  const root = {
+    scrollHeight: options.shellHeight,
+    querySelector: (selector: string) => {
+      if (selector === ".shell") return shell;
+      if (selector === ".header") return header;
+      if (selector === ".session-list" && options.content === "sessions") {
+        return content;
+      }
+      if (selector === ".empty-state" && options.content === "empty") {
+        return content;
+      }
+      return null;
+    },
+  };
+
+  return { root: root as never };
+}
+
 function createModel(overrides: Partial<FloatingViewModel>): FloatingViewModel {
   return {
     status: "running",
@@ -439,7 +538,121 @@ describe("companion renderer html", () => {
   });
 });
 
+describe("companion renderer content height", () => {
+  it("falls back to the root scroll height when the shell is unavailable", async () => {
+    const renderer = (await loadRendererModule()) as Partial<RendererModule> & {
+      measureContentHeight?: (root: HTMLElement) => number;
+    };
+    const root = {
+      scrollHeight: 240,
+      querySelector: () => null,
+    };
+
+    expect(renderer.measureContentHeight?.(root as never)).toBe(240);
+  });
+
+  it("shrinks from a wrapped multi-session layout to one session", async () => {
+    const renderer = (await loadRendererModule()) as Partial<RendererModule> & {
+      measureContentHeight?: (root: HTMLElement) => number;
+    };
+    const expanded = createContentHeightFixture({
+      shellHeight: 360,
+      headerHeight: 84,
+      content: "sessions",
+      childRects: [
+        { top: 108, bottom: 180 },
+        { top: 436, bottom: 508 },
+      ],
+      listScrollHeight: 300,
+      listClientHeight: 140,
+    });
+    const compact = createContentHeightFixture({
+      shellHeight: 520,
+      headerHeight: 44,
+      content: "sessions",
+      childRects: [{ top: 68, bottom: 140 }],
+      listScrollHeight: 240,
+      listClientHeight: 240,
+    });
+
+    vi.stubGlobal("getComputedStyle", () => ({
+      paddingTop: "12px",
+      paddingBottom: "12px",
+      rowGap: "12px",
+    }));
+    try {
+      expect([
+        renderer.measureContentHeight?.(expanded.root),
+        renderer.measureContentHeight?.(compact.root),
+      ]).toEqual([520, 152]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("measures an empty state from its natural child span", async () => {
+    const renderer = (await loadRendererModule()) as Partial<RendererModule> & {
+      measureContentHeight?: (root: HTMLElement) => number;
+    };
+    const empty = createContentHeightFixture({
+      shellHeight: 520,
+      headerHeight: 44,
+      content: "empty",
+      childRects: [{ top: 68, bottom: 88 }],
+    });
+
+    vi.stubGlobal("getComputedStyle", () => ({
+      paddingTop: "12px",
+      paddingBottom: "12px",
+      rowGap: "12px",
+    }));
+    try {
+      expect(renderer.measureContentHeight?.(empty.root)).toBe(100);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
 describe("companion renderer css", () => {
+  it("keeps every split summary item visible by wrapping the header", async () => {
+    const { renderFloatingHtml } = await loadRendererModule();
+    const summaryItems = [
+      { status: "error", statusTone: "red", count: 1, label: "错误" },
+      { status: "error", statusTone: "red", count: 1, label: "委托出错" },
+      { status: "waiting", statusTone: "yellow", count: 1, label: "等待" },
+      {
+        status: "waiting",
+        statusTone: "yellow",
+        count: 1,
+        label: "委托待确认",
+      },
+      { status: "running", statusTone: "green", count: 1, label: "运行中" },
+      { status: "running", statusTone: "green", count: 1, label: "委托中" },
+      { status: "done", statusTone: "blue", count: 1, label: "完成" },
+      { status: "done", statusTone: "blue", count: 1, label: "委托完成" },
+    ] as const;
+    const html = renderFloatingHtml?.(
+      createModel({ summaryItems: [...summaryItems] }),
+    );
+    const layout = resolvedClassDeclarations(readStyles(), [
+      "status-text",
+      "status-summary",
+    ]);
+    const renderedLabels = Array.from(
+      html?.matchAll(/class="summary-label">([^<]+)<\/span>/g) ?? [],
+      (match) => match[1]?.trim(),
+    );
+
+    expect(html?.match(/class="status-summary-item"/g)).toHaveLength(8);
+    expect(renderedLabels).toEqual(summaryItems.map((item) => item.label));
+    expect(layout).toMatchObject({
+      "flex-wrap": "wrap",
+      overflow: "visible",
+      "white-space": "normal",
+    });
+  });
+
   it("keeps nested icons from intercepting button clicks", () => {
     const css = readStyles();
 
