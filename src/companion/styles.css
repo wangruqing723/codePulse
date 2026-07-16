@@ -49,16 +49,14 @@ select {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
+  /* 无边框窗口靠 header 作为拖拽区域；内部的 .window-actions 用 .no-drag 保留点击。 */
+  -webkit-app-region: drag;
 }
 
 .header-main {
   min-width: 0;
   flex: 1;
   display: block;
-}
-
-.drag-region {
-  -webkit-app-region: drag;
 }
 
 .no-drag {
