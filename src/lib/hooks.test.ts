@@ -393,6 +393,85 @@ describe("Hook script event roots", () => {
       }
     },
   );
+
+  it("maps Claude SessionEnd events to done", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "codepulse-hooks-"));
+    const eventRoot = path.join(root, "events");
+
+    try {
+      const scriptPath = await getWriteHookScript()({
+        supportPath: root,
+        eventRoot,
+      });
+      const result = spawnSync(
+        scriptPath,
+        [
+          "claude",
+          "--event",
+          "SessionEnd",
+          JSON.stringify({
+            session_id: "claude-session",
+            cwd: "/Users/test/project",
+            transcript_path:
+              "/Users/test/.claude/projects/-Users-test-project/session.jsonl",
+          }),
+        ],
+        { encoding: "utf8" },
+      );
+
+      expect(result.status).toBe(0);
+      const files = await readdir(eventRoot);
+      expect(files).toHaveLength(1);
+      const event = JSON.parse(
+        await readFile(path.join(eventRoot, files[0]), "utf8"),
+      ) as Record<string, unknown>;
+      expect(event).toMatchObject({
+        agent: "claude",
+        kind: "done",
+        eventName: "SessionEnd",
+        sessionId: "claude-session",
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("Claude hook install lifecycle", () => {
+  it("installs a SessionEnd hook and removes it on uninstall", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "codepulse-lifecycle-"));
+    const supportPath = path.join(root, "support");
+    const claudeSettingsPath = path.join(root, "settings.json");
+    const codexConfigPath = path.join(root, "config.toml");
+    const codexHooksPath = path.join(root, "hooks.json");
+    const options = {
+      supportPath,
+      claudeSettingsPath,
+      codexConfigPath,
+      codexHooksPath,
+    };
+
+    try {
+      await installHooks(options, "claude");
+
+      const installed = JSON.parse(
+        await readFile(claudeSettingsPath, "utf8"),
+      ) as { hooks: Record<string, unknown> };
+      expect(JSON.stringify(installed.hooks.SessionEnd)).toContain(
+        "codepulse-hook",
+      );
+      expect(JSON.stringify(installed.hooks.SessionEnd)).toContain(
+        "--event 'SessionEnd'",
+      );
+
+      await uninstallHooks(options, "claude");
+
+      const afterUninstall = await readFile(claudeSettingsPath, "utf8");
+      expect(afterUninstall).not.toContain("codepulse-hook");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("Codex imported Claude hook health", () => {

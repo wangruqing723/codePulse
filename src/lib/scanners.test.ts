@@ -104,6 +104,15 @@ describe("Claude status inference", () => {
     ).toBe("done");
   });
 
+  it("treats a fresh user message as running", () => {
+    expect(inferClaudeStatus({ type: "user" }, 10_000, false)).toBe("running");
+  });
+
+  it("treats a stale trailing user message as done", () => {
+    // 回合进行中退出会话时 transcript 停在 user；超过 mtime 近窗口应判已结束。
+    expect(inferClaudeStatus({ type: "user" }, 90_000, false)).toBe("done");
+  });
+
   it("prioritizes error status", () => {
     expect(inferClaudeStatus({ type: "assistant" }, 10_000, true)).toBe(
       "error",

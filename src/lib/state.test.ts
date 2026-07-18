@@ -71,6 +71,72 @@ describe("hook event merging", () => {
     expect(sessions).toEqual([]);
   });
 
+  it("clears a running session when a SessionEnd done hook arrives", () => {
+    const passiveRunning = session({
+      id: "claude:shared",
+      agent: "claude",
+      status: "running",
+      updatedAt: "2026-07-01T00:00:20.000Z",
+      lastEventAt: "2026-07-01T00:00:20.000Z",
+      runningSince: "2026-07-01T00:00:10.000Z",
+    });
+    const sessions = mergeHookEvents(
+      [passiveRunning],
+      [
+        hook({
+          id: "session-end",
+          agent: "claude",
+          kind: "done",
+          sessionId: "shared",
+          eventName: "SessionEnd",
+          timestamp: "2026-07-01T00:00:40.000Z",
+        }),
+      ],
+      [],
+      Date.parse("2026-07-01T00:00:45.000Z"),
+    );
+
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({
+      id: "claude:shared",
+      status: "done",
+      completedAt: "2026-07-01T00:00:40.000Z",
+    });
+  });
+
+  it("clears a running session from a SessionEnd hook matched only by cwd", () => {
+    const passiveRunning = session({
+      id: "claude:shared",
+      agent: "claude",
+      status: "running",
+      cwd: "/tmp/project",
+      updatedAt: "2026-07-01T00:00:20.000Z",
+      lastEventAt: "2026-07-01T00:00:20.000Z",
+      runningSince: "2026-07-01T00:00:10.000Z",
+    });
+    const sessions = mergeHookEvents(
+      [passiveRunning],
+      [
+        hook({
+          id: "session-end",
+          agent: "claude",
+          kind: "done",
+          cwd: "/tmp/project",
+          eventName: "SessionEnd",
+          timestamp: "2026-07-01T00:00:40.000Z",
+        }),
+      ],
+      [],
+      Date.parse("2026-07-01T00:00:45.000Z"),
+    );
+
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({
+      id: "claude:shared",
+      status: "done",
+    });
+  });
+
   it("does not let older hooks override newer passive transcript state", () => {
     const passiveDone = session({
       id: "claude:shared",
