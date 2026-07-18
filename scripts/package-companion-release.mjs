@@ -9,7 +9,9 @@ const execFileAsync = promisify(execFile);
 const rootDir = process.cwd();
 const releaseDir = path.join(rootDir, "release");
 const version = packageJson.version;
-const tag = `codepulse-companion-v${version}`;
+// Companion 版本与扩展版本解耦：发布始终推到固定的 latest 指针 tag，扩展
+// 安装端只认这个 tag，扩展升小版本无需重新发布 companion。
+const tag = "codepulse-companion-latest";
 const appPath = path.join(releaseDir, "mac-arm64", "CodePulse Companion.app");
 const zipName = "CodePulse-Companion-darwin-arm64.zip";
 const zipPath = path.join(releaseDir, zipName);
