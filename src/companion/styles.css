@@ -14,7 +14,8 @@ body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #111827;
+  /* macOS vibrancy supplies the backdrop; win32 keeps BrowserWindow's #111827 base. */
+  background: transparent;
   color: #f8fafc;
 }
 
@@ -38,10 +39,119 @@ select {
   grid-template-rows: auto 1fr;
   gap: 12px;
   padding: 12px;
-  background:
-    linear-gradient(180deg, rgba(148, 163, 184, 0.08), rgba(17, 24, 39, 0)) 0
-      0 / 100% 78px no-repeat,
-    #111827;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  overflow: hidden;
+  background-color: rgba(17, 24, 39, 0.72);
+  background-image: linear-gradient(
+    180deg,
+    rgba(148, 163, 184, 0.12),
+    rgba(17, 24, 39, 0)
+  );
+  background-position: 0 0;
+  background-size: 100% 78px;
+  background-repeat: no-repeat;
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  backdrop-filter: blur(20px) saturate(140%);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.shell-transition {
+  animation: companion-shell-enter 180ms ease-out both;
+}
+
+.shell-badge {
+  display: grid;
+  grid-template-rows: 1fr;
+  place-items: center;
+  gap: 0;
+  padding: 0;
+  border-radius: 999px;
+}
+
+.badge {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  height: 100%;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: #f8fafc;
+  cursor: pointer;
+  appearance: none;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease,
+    background-color 180ms ease;
+}
+
+.badge:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.badge:focus-visible {
+  outline: 2px solid rgba(96, 165, 250, 0.9);
+  outline-offset: -3px;
+}
+
+.badge-ring {
+  box-sizing: border-box;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  border: 3px solid var(--badge-tone, var(--status-blue));
+  border-radius: 999px;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.16),
+    0 0 12px
+      color-mix(in srgb, var(--badge-tone, var(--status-blue)) 40%, transparent);
+}
+
+.badge[data-tone="green"] {
+  --badge-tone: var(--status-green);
+}
+
+.badge[data-tone="blue"] {
+  --badge-tone: var(--status-blue);
+}
+
+.badge[data-tone="red"] {
+  --badge-tone: var(--status-red);
+}
+
+.badge[data-tone="yellow"] {
+  --badge-tone: var(--status-yellow);
+}
+
+.badge[data-status="running"] .badge-ring {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.badge-count {
+  min-width: 1ch;
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes companion-shell-enter {
+  from {
+    opacity: 0.72;
+    transform: scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .header {
@@ -438,4 +548,18 @@ select {
   line-height: 1.4;
   color: #cbd5e1;
   overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell,
+  .badge {
+    transition: none;
+    animation: none;
+  }
+
+  .status-dot[data-status="running"],
+  .badge[data-status="running"] .badge-ring,
+  .copy-action[data-copied="true"] {
+    animation: none;
+  }
 }

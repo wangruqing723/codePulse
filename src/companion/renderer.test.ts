@@ -158,6 +158,46 @@ function createModel(overrides: Partial<FloatingViewModel>): FloatingViewModel {
 }
 
 describe("companion renderer html", () => {
+  it("defaults an omitted presentation to the existing panel", async () => {
+    const { renderFloatingHtml } = await loadRendererModule();
+
+    const html = renderFloatingHtml?.(createModel({ presentation: undefined }));
+
+    expect(html).toContain('data-presentation="panel"');
+    expect(html).toContain('<header class="header">');
+    expect(html).toContain('class="session-list"');
+    expect(html).not.toContain('class="badge no-drag"');
+  });
+
+  it("renders a compact status badge without panel content", async () => {
+    const { renderFloatingHtml } = await loadRendererModule();
+
+    const html = renderFloatingHtml?.(
+      createModel({
+        presentation: "badge",
+        badge: {
+          status: "error",
+          tone: "red",
+          totalCount: 3,
+          label: "3 个活跃会话",
+        },
+      }),
+    );
+
+    expect(html).toContain('class="shell shell-badge"');
+    expect(html).toContain('data-presentation="badge"');
+    expect(html).toContain('class="badge no-drag"');
+    expect(html).toContain('data-reveal="true"');
+    expect(html).toContain('data-status="error"');
+    expect(html).toContain('data-tone="red"');
+    expect(html).toContain('aria-label="3 个活跃会话"');
+    expect(html).toContain('class="badge-ring"');
+    expect(html).toContain('class="badge-count" aria-hidden="true">3</span>');
+    expect(html).not.toContain('<header class="header">');
+    expect(html).not.toContain('class="session-list"');
+    expect(html).not.toContain('class="window-actions no-drag"');
+  });
+
   it("labels delegated Codex session cards", async () => {
     const { renderFloatingHtml } = await loadRendererModule();
     const model = createModel({});
@@ -260,6 +300,42 @@ describe("companion renderer html", () => {
     listeners.get("click")?.({ target: icon });
 
     expect(requestWindowAction.mock.calls).toEqual([["pin"]]);
+    vi.unstubAllGlobals();
+  });
+
+  it("reveals the panel when the badge is clicked", async () => {
+    const { bindInteractions } = await loadRendererModule();
+    const listeners = new Map<string, (event: { target: unknown }) => void>();
+    const requestWindowAction = vi.fn();
+    class FakeElement {
+      public dataset = { reveal: "true" };
+
+      closest(selector: string): FakeElement | undefined {
+        return selector === "[data-reveal]" ? this : undefined;
+      }
+    }
+    const root = {
+      addEventListener: vi.fn(
+        (event: string, listener: (event: { target: unknown }) => void) => {
+          listeners.set(event, listener);
+        },
+      ),
+    };
+    const badge = new FakeElement();
+
+    vi.stubGlobal("HTMLElement", FakeElement);
+    bindInteractions?.(
+      root as never,
+      {
+        copyText: vi.fn(),
+        getState: vi.fn(),
+        requestWindowAction,
+        subscribe: vi.fn(),
+      } as never,
+    );
+    listeners.get("click")?.({ target: badge });
+
+    expect(requestWindowAction.mock.calls).toEqual([["hover-enter"]]);
     vi.unstubAllGlobals();
   });
 
@@ -539,6 +615,62 @@ describe("companion renderer html", () => {
 });
 
 describe("companion renderer content height", () => {
+  it("does not schedule a content-height report for the badge", async () => {
+    const { renderIntoRoot } = await loadRendererModule();
+    const requestAnimationFrame = vi.fn();
+    const reportContentHeight = vi.fn();
+    const root = {
+      innerHTML: "",
+    };
+
+    vi.stubGlobal("requestAnimationFrame", requestAnimationFrame);
+    try {
+      renderIntoRoot?.(root as never, createModel({ presentation: "badge" }), {
+        reportContentHeight,
+      });
+
+      expect(requestAnimationFrame).not.toHaveBeenCalled();
+      expect(reportContentHeight).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("ignores a stale panel measurement after switching to the badge", async () => {
+    const { renderIntoRoot } = await loadRendererModule();
+    const animationFrames: Array<() => void> = [];
+    const reportContentHeight = vi.fn();
+    let presentation = "panel";
+    const root = {
+      set innerHTML(html: string) {
+        presentation = html.includes('data-presentation="badge"')
+          ? "badge"
+          : "panel";
+      },
+      querySelector: (selector: string) =>
+        selector === ".shell" ? { dataset: { presentation } } : null,
+    };
+
+    vi.stubGlobal("requestAnimationFrame", (callback: () => void) => {
+      animationFrames.push(callback);
+      return animationFrames.length;
+    });
+    try {
+      renderIntoRoot?.(root as never, createModel({ presentation: "panel" }), {
+        reportContentHeight,
+      });
+      renderIntoRoot?.(root as never, createModel({ presentation: "badge" }), {
+        reportContentHeight,
+      });
+
+      expect(animationFrames).toHaveLength(1);
+      animationFrames[0]?.();
+      expect(reportContentHeight).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("falls back to the root scroll height when the shell is unavailable", async () => {
     const renderer = (await loadRendererModule()) as Partial<RendererModule> & {
       measureContentHeight?: (root: HTMLElement) => number;
@@ -615,6 +747,54 @@ describe("companion renderer content height", () => {
 });
 
 describe("companion renderer css", () => {
+  it("uses a transparent vibrancy canvas with a dark shell fallback", () => {
+    const css = readStyles();
+    const shellRule = css.match(/\.shell\s*{(?<body>[^}]*)}/)?.groups?.body;
+
+    expect(css).toMatch(/html,\s*body\s*{[^}]*background:\s*transparent;/);
+    expect(shellRule).toContain("background-color: rgba(17, 24, 39, 0.72);");
+    expect(shellRule).toContain("border-radius: 14px;");
+    expect(shellRule).toContain("backdrop-filter: blur(20px) saturate(140%);");
+    expect(shellRule).toMatch(/opacity\s+180ms/);
+    expect(shellRule).toMatch(/transform\s+180ms/);
+  });
+
+  it("keeps the panel header as the frameless-window drag region", () => {
+    const css = readStyles();
+    const headerRule = css.match(/\.header\s*{(?<body>[^}]*)}/)?.groups?.body;
+
+    expect(headerRule).toContain("-webkit-app-region: drag;");
+    expect(css).toMatch(/\.no-drag\s*{[^}]*-webkit-app-region:\s*no-drag;/);
+  });
+
+  it("styles all badge tones and pulses only a running badge", () => {
+    const css = readStyles();
+
+    for (const tone of ["green", "blue", "red", "yellow"]) {
+      expect(css).toContain(`.badge[data-tone="${tone}"]`);
+    }
+    expect(css).toMatch(
+      /\.badge\[data-status="running"\]\s+\.badge-ring\s*{[^}]*animation:\s*pulse/,
+    );
+    expect(css).toContain("font-variant-numeric: tabular-nums;");
+  });
+
+  it("provides short badge transitions and reduced-motion fallbacks", () => {
+    const css = readStyles();
+    const badgeRule = css.match(/\.badge\s*{(?<body>[^}]*)}/)?.groups?.body;
+    const reducedMotion = css.slice(
+      css.indexOf("@media (prefers-reduced-motion: reduce)"),
+    );
+
+    expect(badgeRule).toMatch(/opacity\s+180ms/);
+    expect(badgeRule).toMatch(/transform\s+180ms/);
+    expect(css).toContain("@keyframes companion-shell-enter");
+    expect(css).toContain("@media (prefers-reduced-motion: reduce)");
+    expect(reducedMotion).toMatch(
+      /\.status-dot\[data-status="running"\],\s*\.badge\[data-status="running"\] \.badge-ring,\s*\.copy-action\[data-copied="true"\]\s*{[^}]*animation:\s*none;/,
+    );
+  });
+
   it("keeps every split summary item visible by wrapping the header", async () => {
     const { renderFloatingHtml } = await loadRendererModule();
     const summaryItems = [

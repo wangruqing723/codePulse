@@ -41,6 +41,80 @@ function createSnapshot(sessions: SessionRecord[]): StateSnapshot {
 }
 
 describe("floating companion view model", () => {
+  it.each([
+    ["running", "green"],
+    ["done", "blue"],
+    ["error", "red"],
+    ["waiting", "yellow"],
+  ] as const)(
+    "builds the %s dominant badge with its shared status tone",
+    async (status, tone) => {
+      const { buildBadgeViewModel } = await loadViewModelModule();
+      const snapshot = createSnapshot([
+        createSession({ id: status, status }),
+        createSession({ id: "idle", status: "idle" }),
+      ]);
+
+      expect(buildBadgeViewModel?.(snapshot, { platform: "darwin" })).toEqual({
+        status,
+        tone,
+        totalCount: 1,
+        label: "1 个活跃会话",
+      });
+    },
+  );
+
+  it("uses the established dominant-status order and counts all non-idle sessions", async () => {
+    const { buildBadgeViewModel } = await loadViewModelModule();
+    const snapshot = createSnapshot([
+      createSession({ id: "done", status: "done" }),
+      createSession({ id: "running", status: "running" }),
+      createSession({ id: "waiting", status: "waiting" }),
+      createSession({ id: "error", status: "error" }),
+      createSession({ id: "idle", status: "idle" }),
+    ]);
+
+    expect(buildBadgeViewModel?.(snapshot, { platform: "darwin" })).toEqual({
+      status: "error",
+      tone: "red",
+      totalCount: 4,
+      label: "4 个活跃会话",
+    });
+  });
+
+  it("builds a neutral empty badge and leaves presentation unset", async () => {
+    const { buildBadgeViewModel, buildFloatingViewModel } =
+      await loadViewModelModule();
+    const snapshot = createSnapshot([createSession({ status: "idle" })]);
+
+    expect(buildBadgeViewModel?.(snapshot, { platform: "darwin" })).toEqual({
+      status: "empty",
+      tone: "blue",
+      totalCount: 0,
+      label: "0 个活跃会话",
+    });
+
+    const model = buildFloatingViewModel?.(snapshot, { platform: "darwin" });
+    expect(model?.badge).toEqual({
+      status: "empty",
+      tone: "blue",
+      totalCount: 0,
+      label: "0 个活跃会话",
+    });
+    expect(model?.presentation).toBeUndefined();
+  });
+
+  it("builds an empty badge when no snapshot is available", async () => {
+    const { buildBadgeViewModel } = await loadViewModelModule();
+
+    expect(buildBadgeViewModel?.(undefined, { platform: "darwin" })).toEqual({
+      status: "empty",
+      tone: "blue",
+      totalCount: 0,
+      label: "0 个活跃会话",
+    });
+  });
+
   it("summarizes delegated Codex work separately from user sessions", async () => {
     const { buildFloatingViewModel, statusText } = await loadViewModelModule();
     const snapshot = createSnapshot([

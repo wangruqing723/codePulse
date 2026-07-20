@@ -11,6 +11,7 @@ import {
 export type CompanionPlatform = "darwin" | "win32";
 export type DisplaySessionStatus = "running" | "done" | "error" | "waiting";
 export type StatusTone = "green" | "blue" | "red" | "yellow";
+export type CompanionPresentation = "badge" | "panel";
 
 export interface FloatingViewModelContext {
   platform: CompanionPlatform;
@@ -47,6 +48,13 @@ export interface FloatingStatusSummaryItem {
 
 export type FloatingStatus = SessionStatus | "unavailable" | "empty";
 
+export interface FloatingBadgeViewModel {
+  tone: StatusTone;
+  status: FloatingStatus;
+  totalCount: number;
+  label: string;
+}
+
 export interface FloatingViewModel {
   status: FloatingStatus;
   count: number;
@@ -56,6 +64,8 @@ export interface FloatingViewModel {
   summaryItems?: FloatingStatusSummaryItem[];
   unavailableReason?: string;
   sessions: FloatingSessionViewModel[];
+  presentation?: CompanionPresentation;
+  badge?: FloatingBadgeViewModel;
 }
 
 const DISPLAY_STATUS_ORDER: DisplaySessionStatus[] = [
@@ -86,7 +96,9 @@ const DELEGATED_SUMMARY_LABEL: Record<DisplaySessionStatus, string> = {
   waiting: "委托待确认",
 };
 
-function dominantStatus(snapshot: StateSnapshot | undefined): FloatingStatus {
+function dominantStatus(
+  snapshot: StateSnapshot | undefined,
+): DisplaySessionStatus | "empty" {
   const sessions = snapshot?.sessions ?? [];
   if (sessions.length === 0) {
     return "empty";
@@ -113,6 +125,31 @@ function statusCount(
     snapshot?.sessions.filter((session) => session.status === status).length ??
     0
   );
+}
+
+export function buildBadgeViewModel(
+  snapshot: StateSnapshot | undefined,
+  context: FloatingViewModelContext,
+): FloatingBadgeViewModel {
+  const status =
+    context.unavailableReason && context.platform === "win32"
+      ? "unavailable"
+      : dominantStatus(snapshot);
+  const totalCount =
+    snapshot?.sessions.filter((session) => session.status !== "idle").length ??
+    0;
+
+  return {
+    status,
+    tone:
+      status === "empty"
+        ? STATUS_TONE.done
+        : status === "unavailable"
+          ? STATUS_TONE.error
+          : STATUS_TONE[status],
+    totalCount,
+    label: `${totalCount} 个活跃会话`,
+  };
 }
 
 export function sessionCopyActions(
@@ -342,6 +379,7 @@ export function buildFloatingViewModel(
     summaryItems: statusSummaryItems(sessions),
     unavailableReason: context.unavailableReason,
     sessions,
+    badge: buildBadgeViewModel(snapshot, context),
   };
 
   const text = statusText(model);

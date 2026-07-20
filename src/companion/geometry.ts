@@ -116,6 +116,38 @@ export function hiddenBounds(
   }
 }
 
+export function badgeBounds(
+  fullBounds: Rect,
+  workArea: Rect,
+  edge: DockEdge,
+  badgeSize: { width: number; height: number },
+): Rect {
+  return dockWindow(
+    {
+      x: fullBounds.x,
+      y: fullBounds.y,
+      width: badgeSize.width,
+      height: badgeSize.height,
+    },
+    workArea,
+    edge,
+  );
+}
+
+// 判断某个屏幕坐标点是否落在矩形内（右/下边界取开区间，避免贴边像素误判）。
+// 用于收起前用真实指针位置否决展开瞬间布局突变抖出的假 mouseleave。
+export function pointWithinRect(
+  point: { x: number; y: number },
+  rect: Rect,
+): boolean {
+  return (
+    point.x >= rect.x &&
+    point.x < rect.x + rect.width &&
+    point.y >= rect.y &&
+    point.y < rect.y + rect.height
+  );
+}
+
 export function revealedBounds(
   hidden: Rect,
   previousFullBounds: Rect,

@@ -76,8 +76,29 @@ vi.mock("./process-control", () => ({
   registerCompanionProcess: processControlMocks.registerCompanionProcess,
 }));
 
+function createStatefulWindow(initialBounds: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}) {
+  let bounds = { ...initialBounds };
+  const setBounds = vi.fn((nextBounds: typeof bounds) => {
+    bounds = { ...nextBounds };
+  });
+
+  return {
+    getBounds: vi.fn(() => ({ ...bounds })),
+    setBounds,
+    webContents: {
+      send: vi.fn(),
+    },
+  };
+}
+
 describe("companion main window display flow", () => {
   beforeEach(() => {
+    vi.useRealTimers();
     vi.clearAllMocks();
     processControlMocks.registerCompanionProcess.mockResolvedValue(undefined);
     processControlMocks.killCompanionProcess.mockResolvedValue({
@@ -270,6 +291,199 @@ describe("companion main window display flow", () => {
     });
   });
 
+  it("uses transparent vibrancy and badge-sized minimums only on macOS", async () => {
+    const mainModule = await import("./main");
+
+    expect(
+      mainModule.__testing__.windowChromeOptionsForPlatform("darwin"),
+    ).toEqual({
+      minWidth: 120,
+      maxWidth: 340,
+      minHeight: 44,
+      maxHeight: 520,
+      backgroundColor: "#00000000",
+      transparent: true,
+      vibrancy: "hud",
+    });
+    expect(
+      mainModule.__testing__.windowChromeOptionsForPlatform("win32"),
+    ).toEqual({
+      minWidth: 340,
+      maxWidth: 340,
+      minHeight: 120,
+      maxHeight: 520,
+      backgroundColor: "#111827",
+    });
+  });
+
+  it("shrinks a docked macOS window to a badge and restores full bounds on hover", async () => {
+    vi.useFakeTimers();
+    const platformSpy = vi
+      .spyOn(process, "platform", "get")
+      .mockReturnValue("darwin");
+
+    try {
+      const mainModule = await import("./main");
+      const fakeWindow = createStatefulWindow({
+        x: 1100,
+        y: 200,
+        width: 340,
+        height: 360,
+      });
+
+      mainModule.__testing__.resetState();
+      mainModule.__testing__.setMainWindow(fakeWindow as never);
+      mainModule.__testing__.setRuntimeWindowState({
+        fullBounds: {
+          x: 1100,
+          y: 200,
+          width: 340,
+          height: 360,
+        },
+        dockedEdge: "right",
+        hidden: false,
+      });
+
+      mainModule.__testing__.handleWindowAction("hover-leave");
+      vi.advanceTimersByTime(300);
+
+      expect(fakeWindow.setBounds).toHaveBeenLastCalledWith({
+        x: 1320,
+        y: 200,
+        width: 120,
+        height: 44,
+      });
+      expect(mainModule.__testing__.getRuntimeWindowState()).toEqual({
+        fullBounds: {
+          x: 1100,
+          y: 200,
+          width: 340,
+          height: 360,
+        },
+        dockedEdge: "right",
+        hidden: true,
+      });
+      expect(fakeWindow.webContents.send).toHaveBeenLastCalledWith(
+        "companion:view-model",
+        expect.objectContaining({ presentation: "badge" }),
+      );
+
+      mainModule.__testing__.handleWindowAction("hover-enter");
+
+      expect(fakeWindow.setBounds).toHaveBeenLastCalledWith({
+        x: 1100,
+        y: 200,
+        width: 340,
+        height: 360,
+      });
+      expect(mainModule.__testing__.getRuntimeWindowState()).toEqual({
+        fullBounds: {
+          x: 1100,
+          y: 200,
+          width: 340,
+          height: 360,
+        },
+        dockedEdge: "right",
+        hidden: false,
+      });
+      expect(fakeWindow.webContents.send).toHaveBeenLastCalledWith(
+        "companion:view-model",
+        expect.objectContaining({ presentation: "panel" }),
+      );
+    } finally {
+      platformSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("ignores content-height reports while the macOS badge is visible", async () => {
+    const platformSpy = vi
+      .spyOn(process, "platform", "get")
+      .mockReturnValue("darwin");
+
+    try {
+      const mainModule = await import("./main");
+      const fakeWindow = createStatefulWindow({
+        x: 1320,
+        y: 200,
+        width: 120,
+        height: 44,
+      });
+      const fullBounds = {
+        x: 1100,
+        y: 200,
+        width: 340,
+        height: 360,
+      };
+
+      mainModule.__testing__.resetState();
+      mainModule.__testing__.setMainWindow(fakeWindow as never);
+      mainModule.__testing__.setRuntimeWindowState({
+        fullBounds,
+        dockedEdge: "right",
+        hidden: true,
+      });
+
+      mainModule.__testing__.applyContentHeight(500);
+
+      expect(fakeWindow.setBounds).not.toHaveBeenCalled();
+      expect(mainModule.__testing__.getRuntimeWindowState()).toEqual({
+        fullBounds,
+        dockedEdge: "right",
+        hidden: true,
+      });
+    } finally {
+      platformSpy.mockRestore();
+    }
+  });
+
+  it("keeps the existing off-screen sliver when hiding on Windows", async () => {
+    vi.useFakeTimers();
+    const platformSpy = vi
+      .spyOn(process, "platform", "get")
+      .mockReturnValue("win32");
+
+    try {
+      const mainModule = await import("./main");
+      const fakeWindow = createStatefulWindow({
+        x: 1100,
+        y: 200,
+        width: 340,
+        height: 360,
+      });
+
+      mainModule.__testing__.resetState();
+      mainModule.__testing__.setMainWindow(fakeWindow as never);
+      mainModule.__testing__.setRuntimeWindowState({
+        fullBounds: {
+          x: 1100,
+          y: 200,
+          width: 340,
+          height: 360,
+        },
+        dockedEdge: "right",
+        hidden: false,
+      });
+
+      mainModule.__testing__.handleWindowAction("hover-leave");
+      vi.advanceTimersByTime(300);
+
+      expect(fakeWindow.setBounds).toHaveBeenLastCalledWith({
+        x: 1412,
+        y: 200,
+        width: 340,
+        height: 360,
+      });
+      expect(fakeWindow.webContents.send).toHaveBeenLastCalledWith(
+        "companion:view-model",
+        expect.objectContaining({ presentation: "panel" }),
+      );
+    } finally {
+      platformSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it("registers force-exit IPC without routing it through window action handling", async () => {
     const mainModule = await import("./main");
 
@@ -367,6 +581,9 @@ describe("companion main window display flow", () => {
         height: 360,
       })),
       setBounds: vi.fn(),
+      webContents: {
+        send: vi.fn(),
+      },
       on: vi.fn((event: string, listener: () => void) => {
         listeners.set(event, listener);
         return fakeWindow;
