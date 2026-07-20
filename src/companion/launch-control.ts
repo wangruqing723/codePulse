@@ -31,6 +31,9 @@ import {
 
 const REPO_RELEASE_BASE =
   "https://github.com/wangruqing723/codePulse/releases/download";
+// Companion 版本与 Raycast 扩展版本解耦：扩展升小版本不再要求同步打 companion
+// tag。安装始终从这个固定的 latest 发布指针拉取，扩展只认「最新 companion」。
+const LATEST_RELEASE_TAG = "codepulse-companion-latest";
 const execFileAsync = promisify(execFile);
 const SHA256_PATTERN = /^[a-f0-9]{64}$/i;
 
@@ -250,9 +253,8 @@ export function resolveCompanionManifestUrl(
   const override = options.manifestUrl?.trim();
   if (override) return override;
 
-  const tag =
-    options.releaseTag?.trim() ||
-    `codepulse-companion-v${options.packageVersion}`;
+  // 默认锁定 latest 指针；releaseTag 仍可显式覆盖（测试或回滚到指定版本用）。
+  const tag = options.releaseTag?.trim() || LATEST_RELEASE_TAG;
   return `${REPO_RELEASE_BASE}/${tag}/codepulse-companion-manifest.json`;
 }
 
@@ -283,11 +285,10 @@ function validateManifestArtifact(
   manifest: CompanionReleaseManifest,
   platformKey: string,
 ): { artifact: CompanionReleaseArtifact; entrypoint: string } | string {
-  if (
-    !isStrictCompanionVersion(manifest.version) ||
-    manifest.version !== deps.packageVersion
-  ) {
-    return `Companion manifest 版本不匹配：期望 ${deps.packageVersion}，实际 ${manifest.version}`;
+  // 只要求 manifest 版本是合法的严格版本号即可；不再要求与扩展版本相等，
+  // 让扩展升版后仍能拉取并安装最新 companion。
+  if (!isStrictCompanionVersion(manifest.version)) {
+    return `Companion manifest 版本无效：${manifest.version}`;
   }
 
   const entrypoint = entrypointForPlatform(platformKey);
@@ -331,6 +332,59 @@ function installedEntrypointPath(
   ]);
 }
 
+function compareStrictVersions(left: string, right: string): number {
+  const leftParts = left.split(".").map((part) => BigInt(part));
+  const rightParts = right.split(".").map((part) => BigInt(part));
+  for (let index = 0; index < 3; index += 1) {
+    if (leftParts[index] < rightParts[index]) return -1;
+    if (leftParts[index] > rightParts[index]) return 1;
+  }
+  return 0;
+}
+
+// 离线兜底：manifest 拉取失败时，扫描本地已安装的 companion 版本目录，
+// 返回入口存在的最新版本，让断网时仍能打开已装好的悬浮窗。
+async function resolveInstalledEntrypoint(
+  supportPath: string,
+  platformKey: string,
+): Promise<{ path: string; version: string } | undefined> {
+  const entrypoint = entrypointForPlatform(platformKey);
+  if (!entrypoint) return undefined;
+
+  const companionRoot = joinForPlatform(platformKey, supportPath, [
+    "companion",
+  ]);
+  let entries: Awaited<ReturnType<BootstrapDeps["readdir"]>>;
+  try {
+    entries = await deps.readdir(companionRoot, { withFileTypes: true });
+  } catch {
+    return undefined;
+  }
+
+  const versions = entries
+    .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink())
+    .map((entry) => entry.name)
+    .filter((name) => isStrictCompanionVersion(name))
+    .sort((left, right) => compareStrictVersions(right, left));
+
+  for (const version of versions) {
+    const candidate = installedEntrypointPath(
+      supportPath,
+      version,
+      platformKey,
+    );
+    if (!candidate) continue;
+    try {
+      await deps.access(candidate);
+      return { path: candidate, version };
+    } catch {
+      // Try the next-newest installed version.
+    }
+  }
+
+  return undefined;
+}
+
 function joinForPlatform(
   platformKey: string,
   basePath: string,
@@ -367,6 +421,7 @@ async function launchAndCleanup(
   options: BootstrapCompanionOptions,
   platformKey: string,
   entrypointPath: string,
+  version: string,
 ): Promise<CompanionBootstrapResult> {
   let runningRecord: CompanionProcessRecord | undefined;
   let processInspectionError: string | undefined;
@@ -383,7 +438,7 @@ async function launchAndCleanup(
     cleanup = await cleanupCompanionInstall(
       {
         supportPath: options.supportPath,
-        currentVersion: deps.packageVersion,
+        currentVersion: version,
         platformKey,
         runningRecord,
         processInspectionError,
@@ -406,21 +461,6 @@ async function bootstrapCompanionOnce(
   skipInstalledCheck = false,
 ): Promise<CompanionBootstrapResult> {
   const platformKey = getPlatformKey(deps.platform, deps.arch);
-  emitProgress(options.onProgress, { stage: "checking-installed" });
-  const installed = installedEntrypointPath(
-    options.supportPath,
-    deps.packageVersion,
-    platformKey,
-  );
-
-  if (!skipInstalledCheck && installed) {
-    try {
-      await deps.access(installed);
-      return await launchAndCleanup(options, platformKey, installed);
-    } catch {
-      // Fall through to public release manifest download.
-    }
-  }
 
   const manifestUrl = resolveCompanionManifestUrl({
     packageVersion: deps.packageVersion,
@@ -429,7 +469,25 @@ async function bootstrapCompanionOnce(
   });
   emitProgress(options.onProgress, { stage: "fetching-manifest", manifestUrl });
   const manifest = await fetchJson(manifestUrl);
-  if (!manifest) return { status: "release-unavailable", message: manifestUrl };
+
+  // manifest 拉不到（离线 / 尚无 latest release）：回退启动本地已装的最新
+  // companion，实在没有再报 release 不可用。
+  if (!manifest) {
+    emitProgress(options.onProgress, { stage: "checking-installed" });
+    const fallback = await resolveInstalledEntrypoint(
+      options.supportPath,
+      platformKey,
+    );
+    if (fallback) {
+      return await launchAndCleanup(
+        options,
+        platformKey,
+        fallback.path,
+        fallback.version,
+      );
+    }
+    return { status: "release-unavailable", message: manifestUrl };
+  }
 
   if (
     !entrypointForPlatform(platformKey) ||
@@ -442,18 +500,40 @@ async function bootstrapCompanionOnce(
     return { status: "install-failed", message: validated };
   }
   const { artifact, entrypoint } = validated;
+  const companionVersion = manifest.version;
+
+  // 已装最新版本则直接启动，跳过下载。
+  emitProgress(options.onProgress, { stage: "checking-installed" });
+  const installed = installedEntrypointPath(
+    options.supportPath,
+    companionVersion,
+    platformKey,
+  );
+  if (!skipInstalledCheck && installed) {
+    try {
+      await deps.access(installed);
+      return await launchAndCleanup(
+        options,
+        platformKey,
+        installed,
+        companionVersion,
+      );
+    } catch {
+      // Fall through to download the release artifact.
+    }
+  }
 
   const downloadsDir = joinForPlatform(platformKey, options.supportPath, [
     "companion",
     "downloads",
   ]);
   const zipPath = joinForPlatform(platformKey, downloadsDir, [
-    `${deps.packageVersion}-${platformKey}.zip`,
+    `${companionVersion}-${platformKey}.zip`,
   ]);
   const partialZipPath = `${zipPath}.part`;
   const installDir = joinForPlatform(platformKey, options.supportPath, [
     "companion",
-    deps.packageVersion,
+    companionVersion,
     platformKey,
   ]);
   const tempDir = `${installDir}.tmp-${Date.now()}`;
@@ -496,7 +576,12 @@ async function bootstrapCompanionOnce(
     await deps.rm(installDir, { recursive: true, force: true });
     await deps.rename(tempDir, installDir);
     emitProgress(options.onProgress, { stage: "launching" });
-    return await launchAndCleanup(options, platformKey, entrypointPath);
+    return await launchAndCleanup(
+      options,
+      platformKey,
+      entrypointPath,
+      companionVersion,
+    );
   } catch (error) {
     try {
       await deps.rm(partialZipPath, { force: true });

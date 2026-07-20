@@ -6,15 +6,18 @@ import {
   clipboard,
   ipcMain,
   screen,
+  type BrowserWindowConstructorOptions,
   type Rectangle,
 } from "electron";
 import { buildStateFromConfig } from "../lib/state";
 import type { Preferences } from "../lib/types";
 import { resolveDefaultWslContext, type WslContext } from "../lib/wsl";
 import {
+  badgeBounds,
   clampCompanionHeight,
   dockWindow,
   hiddenBounds,
+  pointWithinRect,
   resizeToHeight,
   revealedBounds,
   type DockEdge,
@@ -24,6 +27,7 @@ import { resolveCompanionStateSource } from "./state-source";
 import {
   buildFloatingViewModel,
   type CompanionPlatform,
+  type CompanionPresentation,
   type FloatingViewModel,
 } from "./view-model";
 import {
@@ -41,6 +45,7 @@ const WINDOW_WIDTH = 340;
 const WINDOW_HEIGHT = 360;
 const WINDOW_MIN_HEIGHT = 120;
 const WINDOW_MAX_HEIGHT = 520;
+const BADGE_SIZE = { width: 120, height: 44 } as const;
 const VISIBLE_SLIVER_PX = 28;
 const EDGE_THRESHOLD_PX = 48;
 const MOVE_SETTLE_MS = 180;
@@ -100,6 +105,47 @@ function clearHideTimer(): void {
 
 function platformForHost(): CompanionPlatform {
   return process.platform === "win32" ? "win32" : "darwin";
+}
+
+type WindowChromeOptions = Pick<
+  BrowserWindowConstructorOptions,
+  | "backgroundColor"
+  | "maxHeight"
+  | "maxWidth"
+  | "minHeight"
+  | "minWidth"
+  | "transparent"
+  | "vibrancy"
+>;
+
+function windowChromeOptionsForPlatform(
+  platform: NodeJS.Platform,
+): WindowChromeOptions {
+  if (platform === "darwin") {
+    return {
+      minWidth: BADGE_SIZE.width,
+      maxWidth: WINDOW_WIDTH,
+      minHeight: BADGE_SIZE.height,
+      maxHeight: WINDOW_MAX_HEIGHT,
+      backgroundColor: "#00000000",
+      transparent: true,
+      vibrancy: "hud",
+    };
+  }
+
+  return {
+    minWidth: WINDOW_WIDTH,
+    maxWidth: WINDOW_WIDTH,
+    minHeight: WINDOW_MIN_HEIGHT,
+    maxHeight: WINDOW_MAX_HEIGHT,
+    backgroundColor: "#111827",
+  };
+}
+
+function currentPresentation(): CompanionPresentation {
+  return process.platform === "darwin" && runtimeWindowState?.hidden
+    ? "badge"
+    : "panel";
 }
 
 function currentPinState(): boolean {
@@ -248,7 +294,9 @@ function dockToEdge(edge: DockEdge, hidden: boolean): void {
     edge,
   );
   const nextBounds = hidden
-    ? hiddenBounds(fullBounds, workArea, edge, VISIBLE_SLIVER_PX)
+    ? process.platform === "darwin"
+      ? badgeBounds(fullBounds, workArea, edge, BADGE_SIZE)
+      : hiddenBounds(fullBounds, workArea, edge, VISIBLE_SLIVER_PX)
     : fullBounds;
 
   runtimeWindowState = {
@@ -257,14 +305,19 @@ function dockToEdge(edge: DockEdge, hidden: boolean): void {
     hidden,
   };
   applyWindowBounds(nextBounds);
+  publishModel(currentModel);
   void persistWindowStateSoon();
 }
 
 // renderer 测量到内容真实高度后调用：把窗口高度收敛到内容大小（夹在
-// [min,max] 区间），消除卡片下方的固定留白。隐藏（吸附收起）状态下只更新
-// fullBounds，等下次展开时按新高度还原，避免打断收起动画。
+// [min,max] 区间），消除卡片下方的固定留白。macOS 徽章态尺寸固定，忽略
+// 收起前可能仍在队列中的测高消息；Windows sliver 仍沿用原有隐藏态逻辑。
 function applyContentHeight(contentHeight: number): void {
   if (!mainWindow || !runtimeWindowState) {
+    return;
+  }
+
+  if (currentPresentation() === "badge") {
     return;
   }
 
@@ -319,6 +372,7 @@ function revealDockedWindow(): void {
     hidden: false,
   };
   applyWindowBounds(revealed);
+  publishModel(currentModel);
   void persistWindowStateSoon();
 }
 
@@ -357,12 +411,17 @@ function restoreDockedWindow(): void {
     hidden: false,
   };
   applyWindowBounds(fullBounds);
+  publishModel(currentModel);
   void persistWindowStateSoon();
 }
 
 function publishModel(model: FloatingViewModel): void {
-  currentModel = model;
-  mainWindow?.webContents.send("companion:view-model", model);
+  const publishedModel: FloatingViewModel = {
+    ...model,
+    presentation: currentPresentation(),
+  };
+  currentModel = publishedModel;
+  mainWindow?.webContents.send("companion:view-model", publishedModel);
 }
 
 async function resolveCachedWsl(): Promise<WslContext> {
@@ -484,13 +543,40 @@ function scheduleMoveEvaluation(): void {
   }, MOVE_SETTLE_MS);
 }
 
+// 指针是否仍落在窗口内。展开瞬间窗口尺寸/位置突变会让 Chromium 在 macOS 抖出
+// 假的 mouseleave，仅凭 DOM 事件会误收起；这里用真实屏幕坐标做权威判断。
+function cursorWithinWindow(): boolean {
+  if (!mainWindow) {
+    return false;
+  }
+
+  try {
+    return pointWithinRect(
+      screen.getCursorScreenPoint(),
+      toRect(mainWindow.getBounds()),
+    );
+  } catch {
+    // 取指针坐标失败时不阻止隐藏，回退到原有行为。
+    return false;
+  }
+}
+
 function scheduleDockedHide(): void {
   clearHideTimer();
   hideTimer = setTimeout(() => {
     hideTimer = undefined;
-    if (runtimeWindowState?.dockedEdge) {
-      hideDockedWindow();
+    if (!runtimeWindowState?.dockedEdge) {
+      return;
     }
+
+    // 指针其实还在展开面板内（假 mouseleave 或悬停未离开）——不隐藏，另排一次
+    // 复查，直到指针真正移出窗口才收起。
+    if (cursorWithinWindow()) {
+      scheduleDockedHide();
+      return;
+    }
+
+    hideDockedWindow();
   }, HOVER_LEAVE_HIDE_DELAY_MS);
 }
 
@@ -558,13 +644,9 @@ async function createMainWindow(): Promise<BrowserWindow> {
   const iconPath = path.join(__dirname, "assets", "codepulse-icon-v2.png");
   const window = new BrowserWindow({
     ...toRectangle(initialBounds),
-    minWidth: WINDOW_WIDTH,
-    maxWidth: WINDOW_WIDTH,
-    minHeight: WINDOW_MIN_HEIGHT,
-    maxHeight: WINDOW_MAX_HEIGHT,
+    ...windowChromeOptionsForPlatform(process.platform),
     alwaysOnTop: true,
     autoHideMenuBar: true,
-    backgroundColor: "#111827",
     frame: false,
     fullscreenable: false,
     hasShadow: true,
@@ -605,6 +687,7 @@ export const __testing__ = {
   registerIpcHandlers,
   refreshModelOnce,
   resolveInitialWindowState,
+  windowChromeOptionsForPlatform,
   resetState: (): void => {
     mainWindow = undefined;
     refreshTimer = undefined;

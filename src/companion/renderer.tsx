@@ -279,9 +279,59 @@ function renderWindowActions(model: FloatingViewModel): string {
   ).join("");
 }
 
-export function renderFloatingHtml(model: FloatingViewModel): string {
+function renderBadge(model: FloatingViewModel): string {
+  const badge = model.badge ?? {
+    status: model.status,
+    tone: isDisplaySessionStatus(model.status)
+      ? STATUS_TONE_FALLBACK[model.status]
+      : model.status === "unavailable"
+        ? "red"
+        : "blue",
+    totalCount: model.sessions.length,
+    label: `${model.sessions.length} 个活跃会话`,
+  };
+
   return `
-    <section class="shell" data-status="${escapeHtml(model.status)}">
+    <button
+      class="badge no-drag"
+      type="button"
+      data-reveal="true"
+      data-status="${escapeHtml(badge.status)}"
+      data-tone="${escapeHtml(badge.tone)}"
+      aria-label="${escapeHtml(badge.label)}"
+      title="${escapeHtml(badge.label)}"
+    >
+      <span class="badge-ring" aria-hidden="true"></span>
+      <span class="badge-count" aria-hidden="true">${escapeHtml(
+        badge.totalCount.toString(),
+      )}</span>
+    </button>
+  `;
+}
+
+export function renderFloatingHtml(
+  model: FloatingViewModel,
+  transition = false,
+): string {
+  const presentation = model.presentation ?? "panel";
+  const shellClass = [
+    "shell",
+    presentation === "badge" ? "shell-badge" : undefined,
+    transition ? "shell-transition" : undefined,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return `
+    <section
+      class="${shellClass}"
+      data-status="${escapeHtml(model.status)}"
+      data-presentation="${presentation}"
+    >
+      ${
+        presentation === "badge"
+          ? renderBadge(model)
+          : `
       <header class="header">
         <div class="header-main">
           <div class="header-copy">
@@ -293,7 +343,8 @@ export function renderFloatingHtml(model: FloatingViewModel): string {
           ${renderWindowActions(model)}
         </div>
       </header>
-      ${renderSessions(model)}
+      ${renderSessions(model)}`
+      }
     </section>
   `;
 }
@@ -338,19 +389,33 @@ function reportContentHeight(
   root: HTMLElement,
   bridge: Pick<CompanionBridge, "reportContentHeight">,
 ): void {
+  if (
+    root.querySelector<HTMLElement>(".shell")?.dataset.presentation === "badge"
+  ) {
+    return;
+  }
+
   const height = measureContentHeight(root);
   if (height > 0) {
     bridge.reportContentHeight(height);
   }
 }
 
-function renderIntoRoot(
+export function renderIntoRoot(
   root: HTMLElement,
   model: FloatingViewModel,
   bridge?: Pick<CompanionBridge, "reportContentHeight">,
 ): void {
-  root.innerHTML = renderFloatingHtml(model);
-  if (bridge) {
+  const presentation = model.presentation ?? "panel";
+  const previousPresentation =
+    typeof root.querySelector === "function"
+      ? root.querySelector<HTMLElement>(".shell")?.dataset.presentation
+      : undefined;
+  const transition =
+    previousPresentation !== undefined && previousPresentation !== presentation;
+
+  root.innerHTML = renderFloatingHtml(model, transition);
+  if (bridge && presentation !== "badge") {
     // 布局落定后再测量，确保拿到换行、折叠后的最终高度。
     requestAnimationFrame(() => {
       reportContentHeight(root, bridge);
@@ -427,6 +492,12 @@ export function bindInteractions(
     const action = actionTarget?.dataset.action;
     if (action === "pin" || action === "minimize" || action === "close") {
       hoverIntent.onWindowAction(action);
+      return;
+    }
+
+    const revealTarget = target.closest<HTMLElement>("[data-reveal]");
+    if (revealTarget?.dataset.reveal === "true") {
+      hoverIntent.onPointerEnter();
       return;
     }
 

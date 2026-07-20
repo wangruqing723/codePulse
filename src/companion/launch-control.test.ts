@@ -22,7 +22,21 @@ describe("companion bootstrap launch control", () => {
   });
 
   it("opens an already installed supportPath companion without downloading", async () => {
-    const fetch = vi.fn();
+    const expectedHash =
+      "4b9a4ac59f3c3aa32273260df6cf4bf358d1c46f8415126aa35b6380d0abb8f7";
+    const fetch = vi.fn(async () =>
+      Response.json({
+        version: "0.1.3",
+        artifacts: {
+          "darwin-arm64": {
+            url: "https://example.test/companion.zip",
+            sha256: expectedHash,
+            entrypoint: "CodePulse Companion.app",
+          },
+        },
+      }),
+    );
+    const downloadFile = vi.fn();
     const open = vi.fn(async () => undefined);
 
     __testing__.setDeps({
@@ -40,6 +54,7 @@ describe("companion bootstrap launch control", () => {
         throw new Error("ENOENT");
       }),
       fetch,
+      downloadFile,
       open,
     });
 
@@ -50,14 +65,28 @@ describe("companion bootstrap launch control", () => {
       path: "/raycast/support/companion/0.1.3/darwin-arm64/CodePulse Companion.app",
     });
 
-    expect(fetch).not.toHaveBeenCalled();
+    expect(downloadFile).not.toHaveBeenCalled();
     expect(open).toHaveBeenCalledWith(
       "/raycast/support/companion/0.1.3/darwin-arm64/CodePulse Companion.app",
     );
   });
 
   it("uses the platform-arch supportPath contract for Windows companion installs", async () => {
-    const fetch = vi.fn();
+    const expectedHash =
+      "4b9a4ac59f3c3aa32273260df6cf4bf358d1c46f8415126aa35b6380d0abb8f7";
+    const fetch = vi.fn(async () =>
+      Response.json({
+        version: "0.1.3",
+        artifacts: {
+          "win32-x64": {
+            url: "https://example.test/companion.zip",
+            sha256: expectedHash,
+            entrypoint: "CodePulse Companion.exe",
+          },
+        },
+      }),
+    );
+    const downloadFile = vi.fn();
     const open = vi.fn(async () => undefined);
 
     __testing__.setDeps({
@@ -74,6 +103,7 @@ describe("companion bootstrap launch control", () => {
         throw new Error("ENOENT");
       }),
       fetch,
+      downloadFile,
       open,
     });
 
@@ -86,13 +116,13 @@ describe("companion bootstrap launch control", () => {
       path: "C:\\Raycast\\Support\\companion\\0.1.3\\win32-x64\\CodePulse Companion.exe",
     });
 
-    expect(fetch).not.toHaveBeenCalled();
+    expect(downloadFile).not.toHaveBeenCalled();
     expect(open).toHaveBeenCalledWith(
       "C:\\Raycast\\Support\\companion\\0.1.3\\win32-x64\\CodePulse Companion.exe",
     );
   });
 
-  it("derives a public manifest URL from the current repo and release tag", () => {
+  it("derives a public manifest URL from the fixed latest release tag", () => {
     expect(
       resolveCompanionManifestUrl({
         packageVersion: "0.1.3",
@@ -100,7 +130,7 @@ describe("companion bootstrap launch control", () => {
         manifestUrl: undefined,
       }),
     ).toBe(
-      "https://github.com/wangruqing723/codePulse/releases/download/codepulse-companion-v0.1.3/codepulse-companion-manifest.json",
+      "https://github.com/wangruqing723/codePulse/releases/download/codepulse-companion-latest/codepulse-companion-manifest.json",
     );
   });
 
@@ -113,6 +143,10 @@ describe("companion bootstrap launch control", () => {
         throw new Error("ENOENT");
       }),
       fetch: vi.fn(async () => new Response("not found", { status: 404 })),
+      // 无本地已装版本可回退。
+      readdir: vi.fn(async () => {
+        throw new Error("ENOENT");
+      }),
       open: vi.fn(async () => undefined),
     });
 
@@ -556,7 +590,7 @@ describe("companion bootstrap launch control", () => {
     expect(onProgress).toHaveBeenCalledWith({
       stage: "fetching-manifest",
       manifestUrl:
-        "https://github.com/wangruqing723/codePulse/releases/download/codepulse-companion-v0.1.3/codepulse-companion-manifest.json",
+        "https://github.com/wangruqing723/codePulse/releases/download/codepulse-companion-latest/codepulse-companion-manifest.json",
     });
     expect(onProgress).toHaveBeenCalledWith({
       stage: "downloading",
@@ -701,6 +735,106 @@ describe("companion bootstrap launch control", () => {
     );
   });
 
+  it("installs the latest companion even when its version differs from the extension version", async () => {
+    // 扩展升到 0.1.20，但 companion 最新仍是 0.1.10：应正常安装 0.1.10，
+    // 不再因版本不匹配报错。
+    const expectedHash =
+      "4b9a4ac59f3c3aa32273260df6cf4bf358d1c46f8415126aa35b6380d0abb8f7";
+    const downloadFile = vi.fn(async () => ({ sha256: expectedHash }));
+    const rename = vi.fn(async () => undefined);
+    const open = vi.fn(async () => undefined);
+
+    __testing__.setDeps({
+      platform: "darwin",
+      arch: "arm64",
+      packageVersion: "0.1.20",
+      access: vi.fn(async () => {
+        throw new Error("ENOENT");
+      }),
+      fetch: vi.fn(async () =>
+        Response.json({
+          version: "0.1.10",
+          artifacts: {
+            "darwin-arm64": {
+              url: "https://example.test/companion.zip",
+              sha256: expectedHash,
+              entrypoint: "CodePulse Companion.app",
+            },
+          },
+        }),
+      ),
+      mkdir: vi.fn(async () => undefined),
+      rm: vi.fn(async () => undefined),
+      downloadFile,
+      rename,
+      extractZip: vi.fn(async () => undefined),
+      open,
+    });
+
+    await expect(
+      bootstrapCompanion({ supportPath: "/raycast/support" }),
+    ).resolves.toMatchObject({
+      status: "launched",
+      path: "/raycast/support/companion/0.1.10/darwin-arm64/CodePulse Companion.app",
+    });
+
+    // 安装目录与下载包用 companion 自身版本命名，而非扩展版本。
+    expect(downloadFile).toHaveBeenCalledWith(
+      "https://example.test/companion.zip",
+      "/raycast/support/companion/downloads/0.1.10-darwin-arm64.zip.part",
+      expect.any(Function),
+    );
+    expect(open).toHaveBeenCalledWith(
+      "/raycast/support/companion/0.1.10/darwin-arm64/CodePulse Companion.app",
+    );
+  });
+
+  it("falls back to the newest installed companion when the manifest is unavailable", async () => {
+    const open = vi.fn(async () => undefined);
+    const companionRoot = "/raycast/support/companion";
+
+    __testing__.setDeps({
+      platform: "darwin",
+      arch: "arm64",
+      packageVersion: "0.1.20",
+      // manifest 拉取失败（离线）。
+      fetch: vi.fn(async () => new Response("boom", { status: 500 })),
+      access: vi.fn(async (filePath: string) => {
+        if (
+          filePath ===
+          `${companionRoot}/0.1.10/darwin-arm64/CodePulse Companion.app`
+        ) {
+          return;
+        }
+        throw new Error("ENOENT");
+      }),
+      readdir: vi.fn(async () => [
+        dirent("0.1.6", "directory"),
+        dirent("0.1.10", "directory"),
+        dirent("downloads", "directory"),
+      ]),
+      lstat: vi.fn(async () => ({
+        isDirectory: () => true,
+        isFile: () => false,
+        isSymbolicLink: () => false,
+      })),
+      realpath: vi.fn(async (target: string) => target),
+      readCompanionProcessRecord: vi.fn(async () => undefined),
+      rm: vi.fn(async () => undefined),
+      open,
+    } as never);
+
+    await expect(
+      bootstrapCompanion({ supportPath: "/raycast/support" }),
+    ).resolves.toMatchObject({
+      status: "launched",
+      path: `${companionRoot}/0.1.10/darwin-arm64/CodePulse Companion.app`,
+    });
+    expect(open).toHaveBeenCalledWith(
+      `${companionRoot}/0.1.10/darwin-arm64/CodePulse Companion.app`,
+    );
+  });
+
   it("skips every deletion when the Companion root is a symbolic link", async () => {
     const companionRoot = "/raycast/support/companion";
     const outsideRoot = "/outside/companion";
@@ -777,11 +911,25 @@ describe("companion bootstrap launch control", () => {
   });
 
   it("cleans obsolete installs after launching an already installed version", async () => {
+    const expectedHash =
+      "4b9a4ac59f3c3aa32273260df6cf4bf358d1c46f8415126aa35b6380d0abb8f7";
     const companionRoot = "/raycast/support/companion";
     const downloadsRoot = `${companionRoot}/downloads`;
     const obsoletePath = `${companionRoot}/0.1.6`;
     const rm = vi.fn(async () => undefined);
-    const fetch = vi.fn();
+    const downloadFile = vi.fn();
+    const fetch = vi.fn(async () =>
+      Response.json({
+        version: "0.1.10",
+        artifacts: {
+          "darwin-arm64": {
+            url: "https://example.test/companion.zip",
+            sha256: expectedHash,
+            entrypoint: "CodePulse Companion.app",
+          },
+        },
+      }),
+    );
 
     __testing__.setDeps({
       platform: "darwin",
@@ -789,6 +937,7 @@ describe("companion bootstrap launch control", () => {
       packageVersion: "0.1.10",
       access: vi.fn(async () => undefined),
       fetch,
+      downloadFile,
       open: vi.fn(async () => undefined),
       rm,
       readdir: vi.fn(async (target: string) =>
@@ -818,7 +967,7 @@ describe("companion bootstrap launch control", () => {
       status: "launched",
       cleanup: { removedPaths: [obsoletePath] },
     });
-    expect(fetch).not.toHaveBeenCalled();
+    expect(downloadFile).not.toHaveBeenCalled();
     expect(rm).toHaveBeenCalledWith(obsoletePath, {
       recursive: true,
       force: true,

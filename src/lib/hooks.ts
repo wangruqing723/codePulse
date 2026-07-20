@@ -662,6 +662,7 @@ function mapEvent(rawEvent) {
   if (eventName === "sessionstart") return undefined;
   if (eventName.includes("error")) return "error";
   if (eventName === "notification" || eventName.includes("waiting") || eventName.includes("approval")) return "waiting";
+  if (eventName === "sessionend" || eventName.includes("session-end") || eventName.includes("session_end")) return "done";
   if (eventName === "stop" || eventName.includes("done") || eventName.includes("task_complete") || eventName.includes("turn-complete")) return "done";
   if (eventName === "userpromptsubmit" || eventName.includes("prompt") || eventName.includes("start")) return "running";
   return "running";
@@ -832,6 +833,11 @@ async function installClaudeHooks(
     settings,
     "UserPromptSubmit",
     buildClaudeHookCommand(scriptPath, "UserPromptSubmit"),
+  );
+  upsertCodePulseClaudeHook(
+    settings,
+    "SessionEnd",
+    buildClaudeHookCommand(scriptPath, "SessionEnd"),
   );
 
   await writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);

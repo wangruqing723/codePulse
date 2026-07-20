@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - "codepulse-companion-v*"
+      - "codepulse-companion-latest"
 
 permissions:
   contents: write
@@ -32,12 +32,8 @@ jobs:
         shell: bash
         run: |
           VERSION="$(node -p "require('./package.json').version")"
-          TAG="codepulse-companion-v${VERSION}"
-
-          if [[ "${GITHUB_REF_TYPE:-}" == "tag" && "${GITHUB_REF_NAME}" != "${TAG}" ]]; then
-            echo "Pushed tag ${GITHUB_REF_NAME} does not match package.json version ${VERSION} (${TAG})." >&2
-            exit 1
-          fi
+          # Companion 发布使用固定的 latest 指针 tag，与扩展版本解耦。
+          TAG="codepulse-companion-latest"
 
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
           echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
@@ -60,11 +56,11 @@ jobs:
         shell: bash
         run: |
           if gh release view "${TAG}" >/dev/null 2>&1; then
-            echo "Release ${TAG} already exists."
+            echo "Release ${TAG} already exists; artifacts will be clobbered."
           else
             gh release create "${TAG}" \
-              --title "CodePulse Companion ${VERSION}" \
-              --notes "CodePulse Companion release ${VERSION}." \
+              --title "CodePulse Companion (latest)" \
+              --notes "CodePulse Companion latest release (${VERSION})." \
               --latest=false
           fi
 

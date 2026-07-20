@@ -211,7 +211,10 @@ export function inferClaudeStatus(
   }
 
   if (type === "user") {
-    return "running";
+    // 回合进行中退出会话（关终端 / Ctrl+C）时，Claude Code 不写终态事件，
+    // transcript 最后一条停在 user。仅凭事件类型会在整个老化窗口内误判运行中，
+    // 因此把 user 也约束到 mtime 近窗口：超窗即视为已结束。
+    return ageMs <= RUNNING_MTIME_WINDOW_MS ? "running" : "done";
   }
 
   if (type === "assistant" && stopReason === "end_turn") {

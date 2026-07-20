@@ -14,6 +14,22 @@ describe("floating companion geometry", () => {
   const workArea = { x: 100, y: 50, width: 1200, height: 800 };
   const bounds = { x: 1180, y: 220, width: 320, height: 180 };
 
+  it.each([
+    ["left", { x: 100, y: 220, width: 120, height: 44 }],
+    ["right", { x: 1180, y: 220, width: 120, height: 44 }],
+    ["top", { x: 1180, y: 50, width: 120, height: 44 }],
+    ["bottom", { x: 1180, y: 806, width: 120, height: 44 }],
+  ] as const)(
+    "shrinks and docks badge bounds to the %s edge",
+    async (edge, expected) => {
+      const { badgeBounds } = await loadGeometryModule();
+
+      expect(
+        badgeBounds?.(bounds, workArea, edge, { width: 120, height: 44 }),
+      ).toEqual(expected);
+    },
+  );
+
   it("docks a window near the right edge to the right edge", async () => {
     const { dockWindow } = await loadGeometryModule();
 
@@ -131,5 +147,20 @@ describe("floating companion geometry", () => {
       width: 300,
       height: 160,
     });
+  });
+
+  it("detects whether a cursor point falls within the window rect", async () => {
+    const { pointWithinRect } = await loadGeometryModule();
+    const rect = { x: 100, y: 50, width: 200, height: 120 };
+
+    // 内部点命中。
+    expect(pointWithinRect?.({ x: 150, y: 80 }, rect)).toBe(true);
+    // 左/上边界取闭区间：命中。
+    expect(pointWithinRect?.({ x: 100, y: 50 }, rect)).toBe(true);
+    // 右/下边界取开区间：不命中（避免贴边像素误判）。
+    expect(pointWithinRect?.({ x: 300, y: 80 }, rect)).toBe(false);
+    expect(pointWithinRect?.({ x: 150, y: 170 }, rect)).toBe(false);
+    // 完全在外。
+    expect(pointWithinRect?.({ x: 50, y: 200 }, rect)).toBe(false);
   });
 });
