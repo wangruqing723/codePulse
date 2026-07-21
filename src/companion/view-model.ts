@@ -135,9 +135,13 @@ export function buildBadgeViewModel(
     context.unavailableReason && context.platform === "win32"
       ? "unavailable"
       : dominantStatus(snapshot);
-  const totalCount =
-    snapshot?.sessions.filter((session) => session.status !== "idle").length ??
-    0;
+  const totalCount = statusCount(snapshot, status);
+  const label =
+    status === "empty"
+      ? "暂无活跃会话"
+      : status === "unavailable"
+        ? "WSL 不可用"
+        : `${totalCount} 个${SUMMARY_LABEL[status]}`;
 
   return {
     status,
@@ -148,7 +152,7 @@ export function buildBadgeViewModel(
           ? STATUS_TONE.error
           : STATUS_TONE[status],
     totalCount,
-    label: `${totalCount} 个活跃会话`,
+    label,
   };
 }
 
