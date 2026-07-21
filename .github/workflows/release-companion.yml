@@ -57,6 +57,10 @@ jobs:
         run: |
           if gh release view "${TAG}" >/dev/null 2>&1; then
             echo "Release ${TAG} already exists; artifacts will be clobbered."
+            # 强制发布：draft release 的 asset 无法通过公开 releases/download 直链访问，
+            # 客户端 fetch manifest 会拿到 404 并静默回退旧版本。每次发布都显式取消
+            # draft，杜绝 release 卡在 draft 导致自动更新链路悄悄断掉。
+            gh release edit "${TAG}" --draft=false --latest=false
           else
             gh release create "${TAG}" \
               --title "CodePulse Companion (latest)" \
