@@ -767,15 +767,16 @@ describe("companion renderer css", () => {
     expect(css).toMatch(/\.no-drag\s*{[^}]*-webkit-app-region:\s*no-drag;/);
   });
 
-  it("styles all badge tones and pulses only a running badge", () => {
+  it("styles all badge tones and breathes only a running badge", () => {
     const css = readStyles();
 
     for (const tone of ["green", "blue", "red", "yellow"]) {
       expect(css).toContain(`.badge[data-tone="${tone}"]`);
     }
     expect(css).toMatch(
-      /\.badge\[data-status="running"\]\s+\.badge-ring\s*{[^}]*animation:\s*pulse/,
+      /\.badge\[data-status="running"\]\s+\.badge-ring\s*{[^}]*animation:\s*breathe/,
     );
+    expect(css).toContain("@keyframes breathe");
     expect(css).toContain("font-variant-numeric: tabular-nums;");
   });
 

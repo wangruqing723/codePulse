@@ -42,13 +42,13 @@ function createSnapshot(sessions: SessionRecord[]): StateSnapshot {
 
 describe("floating companion view model", () => {
   it.each([
-    ["running", "green"],
-    ["done", "blue"],
-    ["error", "red"],
-    ["waiting", "yellow"],
+    ["running", "green", "运行中"],
+    ["done", "blue", "完成"],
+    ["error", "red", "错误"],
+    ["waiting", "yellow", "等待"],
   ] as const)(
     "builds the %s dominant badge with its shared status tone",
-    async (status, tone) => {
+    async (status, tone, label) => {
       const { buildBadgeViewModel } = await loadViewModelModule();
       const snapshot = createSnapshot([
         createSession({ id: status, status }),
@@ -59,26 +59,27 @@ describe("floating companion view model", () => {
         status,
         tone,
         totalCount: 1,
-        label: "1 个活跃会话",
+        label: `1 个${label}`,
       });
     },
   );
 
-  it("uses the established dominant-status order and counts all non-idle sessions", async () => {
+  it("uses the established dominant-status order and counts only the dominant status", async () => {
     const { buildBadgeViewModel } = await loadViewModelModule();
     const snapshot = createSnapshot([
       createSession({ id: "done", status: "done" }),
       createSession({ id: "running", status: "running" }),
       createSession({ id: "waiting", status: "waiting" }),
       createSession({ id: "error", status: "error" }),
+      createSession({ id: "error-2", status: "error" }),
       createSession({ id: "idle", status: "idle" }),
     ]);
 
     expect(buildBadgeViewModel?.(snapshot, { platform: "darwin" })).toEqual({
       status: "error",
       tone: "red",
-      totalCount: 4,
-      label: "4 个活跃会话",
+      totalCount: 2,
+      label: "2 个错误",
     });
   });
 
@@ -91,7 +92,7 @@ describe("floating companion view model", () => {
       status: "empty",
       tone: "blue",
       totalCount: 0,
-      label: "0 个活跃会话",
+      label: "暂无活跃会话",
     });
 
     const model = buildFloatingViewModel?.(snapshot, { platform: "darwin" });
@@ -99,7 +100,7 @@ describe("floating companion view model", () => {
       status: "empty",
       tone: "blue",
       totalCount: 0,
-      label: "0 个活跃会话",
+      label: "暂无活跃会话",
     });
     expect(model?.presentation).toBeUndefined();
   });
@@ -111,7 +112,7 @@ describe("floating companion view model", () => {
       status: "empty",
       tone: "blue",
       totalCount: 0,
-      label: "0 个活跃会话",
+      label: "暂无活跃会话",
     });
   });
 
